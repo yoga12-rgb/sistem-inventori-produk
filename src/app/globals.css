@@ -1,26 +1,136 @@
 @import "tailwindcss";
 
+/* Tailwind v4: enable dark mode via the `class` strategy (next-themes). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Design tokens (light mode default) ----------------------- */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a0a0a;
+
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+
+  /* Primary = Orange (PRD accent). */
+  --primary: #ea580c;            /* orange-600 */
+  --primary-foreground: #ffffff;
+
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+
+  --accent: #fff7ed;             /* orange-50 */
+  --accent-foreground: #9a3412;  /* orange-800 */
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --warning: #f59e0b;
+  --warning-foreground: #1c1917;
+
+  --ring: #fb923c;               /* orange-400 */
+
+  --radius: 0.625rem;
 }
 
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+
+  --card: #111113;
+  --card-foreground: #fafafa;
+
+  --popover: #111113;
+  --popover-foreground: #fafafa;
+
+  --border: #27272a;
+  --input: #27272a;
+
+  --primary: #f97316;            /* orange-500 — slightly brighter on dark */
+  --primary-foreground: #1c1917;
+
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+
+  --accent: #431407;             /* deep orange */
+  --accent-foreground: #fed7aa;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
+  --warning: #fbbf24;
+  --warning-foreground: #1c1917;
+
+  --ring: #f97316;
+}
+
+/* ---------- Theme mapping (Tailwind v4 @theme inline) ---------------- */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ---------- Base styles ---------------------------------------------- */
+@layer base {
+  * {
+    border-color: var(--border);
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Tablet-first: nyaman untuk sentuhan kasir. */
+  button, [role="button"], a {
+    touch-action: manipulation;
+  }
 }

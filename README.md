@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistem Inventaris Multi-Outlet
 
-## Getting Started
+Aplikasi berbasis Next.js 16 + Supabase untuk manajemen inventaris,
+produksi, dan transfer stok antar outlet secara real-time.
 
-First, run the development server:
+📐 **Spesifikasi produk** ada di [`PRD.md`](./PRD.md).
+🛠 **Aturan kolaborasi agent** ada di [`agent.md`](./agent.md) dan [`AGENTS.md`](./AGENTS.md).
+📚 **Dokumentasi teknis** lengkap ada di [`docs/`](./docs/README.md).
 
-```bash
+## Quick Start
+
+```cmd
+:: 1. Dependencies
+npm install
+
+:: 2. Salin & isi env (lihat docs/development.md)
+copy .env.example .env.local
+
+:: 3. Supabase lokal (perlu Docker Desktop aktif)
+npx supabase start
+npx supabase db reset
+
+:: 4. Dev server (Turbopack default di Next 16)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka <http://localhost:3000>. Studio Supabase: <http://localhost:54323>.
+Cara membuat akun Super Admin pertama: lihat [`docs/development.md`](./docs/development.md).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Skrip
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Skrip | Tujuan |
+|---|---|
+| `npm run dev` | Next.js dev server |
+| `npm run build` | Production build |
+| `npm start` | Start production build |
+| `npm run lint` | ESLint |
+| `npx tsc --noEmit` | Type check |
+| `npx supabase migration new <nama>` | Buat migration baru |
+| `npx supabase db reset` | Re-apply semua migration ke DB lokal |
 
-## Learn More
+## Stack singkat
 
-To learn more about Next.js, take a look at the following resources:
+- **Next.js 16** (App Router, Turbopack default)
+- **React 19.2** + TypeScript 5
+- **Tailwind v4** (design tokens, dark mode via `next-themes`, aksen oranye)
+- **Supabase** (PostgreSQL, Auth, Realtime)
+- **React Hook Form + Zod** untuk form
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Struktur
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├─ app/                # Routes (App Router)
+├─ components/         # UI components (theme, dll.)
+├─ lib/                # env, utils, supabase clients
+└─ proxy.ts            # Next 16 proxy: refresh session + auth guard
 
-## Deploy on Vercel
+supabase/
+├─ config.toml
+└─ migrations/         # Single source of truth untuk skema DB
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+docs/                  # Dokumentasi teknis (selalu di-update saat berubah)
+```

@@ -1,0 +1,204 @@
+import Link from "next/link";
+import { ArrowLeftRight, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { TransferListFilters } from "./list-filters";
+import { requireUser } from "@/lib/auth";
+import { formatDateTime } from "@/lib/format";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  transferModeLabel,
+  transferStatusLabel,
+  transferStatusVariant,
+  type TransferMode,
+  type TransferStatus,
+} from "@/lib/transfer";
+
+export const metadata = { title: "Transfer — Sistem Inventaris" };
+
+type Row = {
+  id: string;
+  code: string;
+  mode: TransferMode;
+  status: TransferStatus;
+  notes: string | null;
+  created_at: string;
+  shipped_at: string | null;
+  received_at: string | null;
+  from_location: { id: string; code: string; name: string } | null;
+  to_location: { id: string; code: string; name: string } | null;
+  items: { quantity: number }[];
+};
+
+type SearchParams = Promise<{ status?: string; outlet?: string }>;
+
+export default async function TransferListPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const me = await requireUser();
+  const sp = await searchParams;
+
+  const supabase = await createSupabaseServerClient();
+
+  // Lokasi untuk filter
+  const { data: locations } = await supabase
+    .from("locations")
+    .select("id, code, name")
+    .eq("is_active", true)
+    .order("code", { ascending: true });
+
+  let query = supabase
+    .from("transfers")
+    .select(
+      `
+        id, code, mode, status, notes,
+        created_at, shipped_at, received_at,
+        from_location:locations!transfers_from_location_id_fkey(id, code, name),
+        to_location:locations!transfers_to_location_id_fkey(id, code, name),
+        items:transfer_items(quantity)
+      `,
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (sp.status && sp.status !== "all") {
+    query = query.eq("status", sp.status);
+  }
+  if (sp.outlet && sp.outlet !== "all") {
+    // Tampilkan transfer yang melibatkan outlet terpilih (asal atau tujuan)
+    query = query.or(
+      `from_location_id.eq.${sp.outlet},to_location_id.eq.${sp.outlet}`,
+    );
+  }
+
+  const { data, error } = await query;
+  const rows = ((data ?? []) as unknown as Row[]) ?? [];
+
+  const myOutlet = me.profile?.outlet_id ?? null;
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">
+            Operasional
+          </p>
+          <h1 className="text-2xl font-semibold">Transfer</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Two-way memerlukan konfirmasi penerima. One-way langsung jadi.
+          </p>
+        </div>
+        <Link
+          href="/transfer/baru"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          Buat Transfer
+        </Link>
+      </header>
+
+      <TransferListFilters
+        locations={locations ?? []}
+        defaultOutletId={myOutlet}
+      />
+
+      {error ? (
+        <p className="text-sm text-destructive">{error.message}</p>
+      ) : null}
+
+      <div className="rounded-xl border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Kode</TableHead>
+              <TableHead>Asal → Tujuan</TableHead>
+              <TableHead>Mode</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Item</TableHead>
+              <TableHead>Dibuat</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-10">
+                  <EmptyState
+                    icon={ArrowLeftRight}
+                    title="Belum ada transfer"
+                    description="Buat transfer pertama dari Central Pastry ke outlet."
+                  />
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((r) => {
+                const totalQty = r.items.reduce(
+                  (sum, i) => sum + Number(i.quantity),
+                  0,
+                );
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs">
+                      {r.code}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <span className="font-medium">
+                          {r.from_location?.code ?? "—"}
+                        </span>
+                        <span className="mx-1 text-muted-foreground">→</span>
+                        <span className="font-medium">
+                          {r.to_location?.code ?? "—"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {r.from_location?.name} → {r.to_location?.name}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {transferModeLabel(r.mode)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={transferStatusVariant(r.status)}>
+                        {transferStatusLabel(r.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.items.length}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        ({totalQty})
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatDateTime(r.created_at)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        href={`/transfer/${r.id}`}
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        Detail
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
