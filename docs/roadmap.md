@@ -1,4 +1,4 @@
-# Roadmap
+﻿# Roadmap
 
 Iterasi disusun agar tiap rilis dapat dipakai end-to-end.
 
@@ -98,3 +98,65 @@ Iterasi disusun agar tiap rilis dapat dipakai end-to-end.
 - Halaman privat sekarang punya error boundary granular: kalau Server
   Component throw (misal Supabase down), pengguna lihat halaman recovery
   bukan stack trace.
+
+## âœ… Iterasi 7 â€” Disposal Categories, POS Redesign, Multi-Batch Split, Kategori Produk & Production History
+
+### Disposal Categories
+- Enum values baru: `compliment_out`, `tester_out` pada `stock_movement_type`
+- `fn_record_disposal` menerima: expired_out, damage_out, compliment_out,
+  tester_out, adjustment_out
+- UI disposal dialog: Expired (perishable only), Compliment, Tester, Rusak.
+  Adjustment dihapus dari UI (tetap di DB untuk pembatalan transfer)
+- Inventory Matrix kolom berubah: Stok Awal â†’ Masuk â†’ Transfer In â†’
+  Transfer Out â†’ Terjual â†’ Expired â†’ Compliment â†’ Tester â†’ Rusak â†’ Stok Akhir
+- EOD report: section "Disposal" dengan emoji per kategori
+  (âŒ Expired, ðŸŽ Compliment, ðŸ§ª Tester, ðŸ—‘ï¸ Rusak)
+- Halaman Aktivitas menampilkan label untuk movement type baru
+
+### POS Redesign (`/penjualan`)
+- Overhaul total dari form-based ke POS-style layout
+- Dua kolom: product grid (kiri) + sticky cart (kanan)
+- Product card: tap-to-add, qty badge, category badge, expiry warning
+- Search bar + filter tabs (Semua/Perishable/Non-perishable/Hampir expired)
+- Category filter chips (AND dengan tabs)
+- Cart: stepper (+/âˆ’), batch picker modal, notes field
+- Mobile: floating cart bar + bottom sheet
+- Keyboard shortcuts: `/` focus search, `Ctrl+Enter` submit
+- Realtime stock update setelah sale + manual refetch fallback
+- Sale history dipindah ke Sheet dengan date filter (â—€/â–¶/Today)
+
+### Multi-Batch Split per Sale Item
+- Cart model berubah dari single `override_batch_id` ke `splits[]`
+- Tiap split = `{ batch_id: string | null, quantity: number }`
+- Batch picker dialog: toggle "Otomatis (FIFO)" vs "Pilih batch manual"
+- FIFO mode: preview batch mana yang akan dipotong
+- Manual mode: input qty per batch, total harus cocok
+- Server mengirim tiap split sebagai sale_item terpisah ke `fn_record_sale`
+
+### Production History
+- Komponen baru `production-history.tsx` di halaman `/produksi`
+- Tabel batch yang diproduksi pada tanggal terpilih
+- Date navigator (â—€/â–¶/Today)
+- Filter lokasi Central Pastry, persisted di localStorage
+- Kolom: Waktu, Produk, Lokasi, Qty, Kedaluwarsa, Aktor, Catatan
+
+### Kategori Produk
+- Tabel baru `product_categories` (id, code, name, icon, color, sort,
+  is_active)
+- Produk memiliki nullable `category_id` FK
+- Halaman CRUD `/master/categories` (Super Admin only)
+- Sidebar menu: Master Data â†’ Kategori (antara Outlet dan Produk)
+- Form produk: dropdown Category
+- List produk: badge kategori berwarna
+- POS: category filter chips (AND dengan tabs)
+- Stok: category filter chips + kolom Kategori di tabel
+- View `v_stock_per_location` extended dengan kolom kategori
+- RLS: read all authenticated, write super_admin only
+
+### Bug Fixes
+- Modal focus trap + auto-focus first input on open
+- Form alignment (items-start instead of items-end)
+- Toast infinite loop fix (stable context value)
+- Hydration mismatch fix (useId instead of Math.random untuk row UIDs)
+- Stock tidak update setelah sale (manual refetch setelah submit)
+- EOD âœ… prefix pada variant names

@@ -23,6 +23,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   sale_out: "Penjualan",
   expired_out: "Expired",
   damage_out: "Rusak",
+  compliment_out: "Compliment",
+  tester_out: "Tester",
   adjustment_in: "Adjustment in",
   adjustment_out: "Adjustment out",
 };
@@ -83,17 +85,6 @@ export default async function AktivitasPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Audit
-        </p>
-        <h1 className="text-2xl font-semibold">Aktivitas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          200 movement stok terbaru. Semua transaksi tercatat — termasuk
-          adjustment dari pembatalan transfer.
-        </p>
-      </header>
-
       {error ? (
         <p className="text-sm text-destructive">{error.message}</p>
       ) : null}

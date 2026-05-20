@@ -28,12 +28,6 @@ export default async function EodPage() {
   if (allowedOutlets.length === 0) {
     return (
       <div className="space-y-6">
-        <header>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Operasional
-          </p>
-          <h1 className="text-2xl font-semibold">End of Day</h1>
-        </header>
         <EmptyState
           icon={Receipt}
           title="Belum ada outlet"
@@ -58,17 +52,6 @@ export default async function EodPage() {
           Kembali ke Penjualan
         </Link>
       </div>
-
-      <header>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Operasional
-        </p>
-        <h1 className="text-2xl font-semibold">End of Day Report</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ringkasan penjualan dan stok akhir hari ini. Bagikan ke WhatsApp
-          dengan satu sentuhan.
-        </p>
-      </header>
 
       <EodPanel
         outlets={allowedOutlets}

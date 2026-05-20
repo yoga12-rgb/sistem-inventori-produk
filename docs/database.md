@@ -1,4 +1,4 @@
-# Database
+﻿# Database
 
 Sumber kebenaran skema ada di `supabase/migrations/`. Dokumen ini hanya peta tingkat tinggi.
 
@@ -36,6 +36,19 @@ Tiap **varian = satu baris** dengan SKU sendiri.
   mengisi `expires_at` otomatis bila tidak diisi manual.
 - `expiry_warning_hours`: jam sebelum expired untuk menyalakan warning UI.
 - `expiry_discount_percent`: saran diskon otomatis.
+- `category_id`: nullable FK ke `product_categories`.
+
+### `product_categories`
+Tabel master kategori produk. Field:
+- `id` (uuid, PK)
+- `code` (text, unique) â€” kode singkat kategori
+- `name` (text) â€” nama tampilan
+- `icon` (text, nullable) â€” emoji atau icon identifier
+- `color` (text, nullable) â€” warna badge (hex/tailwind class)
+- `sort` (integer) â€” urutan tampil di UI
+- `is_active` (boolean, default true) â€” soft delete
+
+RLS: read untuk semua authenticated, write hanya `super_admin`.
 
 ### `stock_batches`
 Granularitas pelacakan stok. Setiap batch punya:
@@ -50,11 +63,13 @@ Audit trail seluruh perubahan stok. Tipe:
 |---|---|---|
 | `production_in` | + | Produksi di Central Pastry |
 | `entry_in` | + | Pemasukan stok non-perishable |
-| `sale_out` | âˆ’ | Penjualan |
-| `expired_out` | âˆ’ | Buang karena lewat expired |
-| `damage_out` | âˆ’ | Rusak / waste |
-| `adjustment_in` / `adjustment_out` | Â± | Penyesuaian manual |
-| `transfer_out` / `transfer_in` | âˆ’ / + | Transfer antar lokasi |
+| `sale_out` | − | Penjualan |
+| `expired_out` | − | Buang karena lewat expired (perishable only) |
+| `compliment_out` | − | Diberikan sebagai compliment / hadiah |
+| `tester_out` | − | Dijadikan tester / sample |
+| `damage_out` | − | Rusak / waste |
+| `adjustment_in` / `adjustment_out` | ± | Penyesuaian sistem (mis. pembatalan transfer). Tidak diekspos ke kasir di UI disposal. |
+| `transfer_out` / `transfer_in` | − / + | Transfer antar lokasi |
 
 ### `sales` / `sale_items`
 - 1 transaksi = 1 row `sales`, multi-item via `sale_items`.
@@ -73,9 +88,13 @@ Audit trail seluruh perubahan stok. Tipe:
 | `idx_products_sku` | Lookup cepat per SKU |
 | `idx_batches_fifo` (partial: `remaining_qty > 0`) | FIFO scan per product+location |
 | `idx_batches_expires_at` (partial: not null) | Notifikasi expired |
-| `idx_movements_loc_date` | Inventory matrix per outlet/tanggal |
-| `idx_sales_location_date` | EOD report |
+| `idx_movements_loc_date` | Inventory matrix per outlet/tanggal (general) |
+| `idx_movements_eod_lookup` | **EOD per kategori & matrix per movement_type** — composite `(location_id, movement_type, occurred_at desc)` |
+| `idx_movements_sale_out` (partial: `movement_type = 'sale_out'`) | **Riwayat penjualan & EOD Terjual** — partial index, footprint kecil |
+| `idx_sales_location_date` | EOD sales header |
 | `idx_transfers_status` / `_from_loc` / `_to_loc` | Inbox transfer |
+| `idx_products_category` | Filter produk per kategori |
+| `idx_product_categories_active_sort` (partial: `is_active`) | Render chip kategori berurutan |
 
 ## Trigger
 
@@ -124,8 +143,8 @@ Menambahkan tiga function Postgres + satu view agregat. Semua function
 - Returns `uuid` batch baru, mencatat `stock_movements` tipe `entry_in`.
 
 ### `fn_deduct_stock_fifo(p_product_id, p_location_id, p_quantity, p_movement_type, p_batch_id?, p_reference_type?, p_reference_id?, p_occurred_at?, p_notes?)`
-- Movement type harus salah satu: `sale_out`, `expired_out`, `damage_out`,
-  `adjustment_out`, `transfer_out`. Movement IN ditolak.
+- Movement type harus salah satu: `sale_out`, `expired_out`, `compliment_out`,
+  `tester_out`, `damage_out`, `adjustment_out`, `transfer_out`. Movement IN ditolak.
 - **Override manual** lewat `p_batch_id` â€” qty diambil dari satu batch saja.
 - **FIFO otomatis** bila `p_batch_id NULL` â€” iterasi batch dengan
   `produced_at ASC, created_at ASC` (mengikuti index parsial
@@ -145,7 +164,10 @@ Agregat `remaining_qty > 0` per produk + lokasi:
 | `nearest_expiry` | `min(expires_at)` (perishable & remaining_qty>0) |
 | `oldest_produced_at` | `min(produced_at)` (remaining_qty>0) |
 
-View tunduk RLS dari tabel sumber (`stock_batches`, `products`, `locations`).
+| `category_code` | `product_categories.code` via join |
+| `category_name` | `product_categories.name` via join |
+
+View tunduk RLS dari tabel sumber (`stock_batches`, `products`, `locations`, `product_categories`).
 Tidak perlu policy terpisah.
 
 
@@ -211,7 +233,7 @@ dilakukan eksplisit di awal tiap function.
 - Returns `uuid` sale baru.
 
 ### `fn_record_disposal(p_product_id, p_location_id, p_quantity, p_movement_type, p_batch_id?, p_notes?, p_occurred_at?)`
-- `p_movement_type` harus `expired_out`, `damage_out`, atau `adjustment_out`.
+- `p_movement_type` harus salah satu: `expired_out`, `damage_out`, `compliment_out`, `tester_out`, atau `adjustment_out`.
 - Wraper di atas `fn_deduct_stock_fifo` dengan `reference_type='disposal'`.
 - Returns total qty terbuang (numeric) â€” berguna untuk konfirmasi UI.
 
@@ -269,11 +291,12 @@ Drilldown movement individual untuk satu sel matrix. `kind` mendukung:
 | Kind | Movement types |
 |---|---|
 | `in` | production_in + entry_in + transfer_in + adjustment_in |
-| `out` | sale_out + transfer_out + expired_out + damage_out + adjustment_out |
+| `out` | sale_out + transfer_out + expired_out + compliment_out + tester_out + damage_out + adjustment_out |
 | `sold` | sale_out |
 | `transfer_in` / `transfer_out` | sesuai nama |
 | `produced` / `entered` | production_in / entry_in |
 | `expired` / `damage` | expired_out / damage_out |
+| `compliment` / `tester` | compliment_out / tester_out |
 | `adjustment_in` / `adjustment_out` | sesuai nama |
 
 Returns kolom waktu, tipe, qty, batch + produced_at, reference, notes,

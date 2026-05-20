@@ -18,6 +18,7 @@ const productSchema = z
     sku: skuSchema,
     name: z.string().trim().min(2, "Minimal 2 karakter"),
     unit: z.string().trim().min(1, "Satuan wajib diisi").max(16),
+    category_id: z.string().uuid().nullable(),
     is_perishable: z.boolean(),
     default_shelf_life_hours: z
       .number({ message: "Harus angka" })
@@ -73,6 +74,8 @@ export async function saveProductAction(
     sku: (formData.get("sku") as string) ?? "",
     name: (formData.get("name") as string) ?? "",
     unit: ((formData.get("unit") as string) ?? "pcs").trim() || "pcs",
+    category_id:
+      ((formData.get("category_id") as string) ?? "").trim() || null,
     is_perishable: isPerishable,
     default_shelf_life_hours: isPerishable
       ? toNumberOrNull(formData.get("default_shelf_life_hours"))
@@ -100,6 +103,7 @@ export async function saveProductAction(
     sku: data.sku,
     name: data.name,
     unit: data.unit,
+    category_id: data.category_id,
     is_perishable: data.is_perishable,
     default_shelf_life_hours: data.default_shelf_life_hours,
     expiry_warning_hours: data.expiry_warning_hours,
@@ -119,6 +123,8 @@ export async function saveProductAction(
   }
 
   revalidatePath("/master/products");
+  revalidatePath("/penjualan");
+  revalidatePath("/stok");
   revalidatePath("/");
   return { ok: true, message: data.id ? "Produk diperbarui." : "Produk dibuat." };
 }

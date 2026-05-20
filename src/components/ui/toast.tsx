@@ -99,40 +99,69 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const success = React.useCallback<ToastContextValue["success"]>(
+    (title, opts) => {
+      const o = normaliseQuickInput(opts);
+      return show({ title, ...o, variant: "success" });
+    },
+    [show],
+  );
+  const error = React.useCallback<ToastContextValue["error"]>(
+    (title, opts) => {
+      const o = normaliseQuickInput(opts);
+      return show({
+        title,
+        ...o,
+        variant: "error",
+        duration: o.duration ?? 6000,
+      });
+    },
+    [show],
+  );
+  const info = React.useCallback<ToastContextValue["info"]>(
+    (title, opts) => {
+      const o = normaliseQuickInput(opts);
+      return show({ title, ...o, variant: "info" });
+    },
+    [show],
+  );
+  const warning = React.useCallback<ToastContextValue["warning"]>(
+    (title, opts) => {
+      const o = normaliseQuickInput(opts);
+      return show({ title, ...o, variant: "warning" });
+    },
+    [show],
+  );
+
+  // `toasts` sengaja TIDAK masuk deps memo — referensi `value` stabil
+  // antar render supaya `useEffect` di consumer tidak loop kalau memasukkan
+  // hasil `useToast()` ke deps. Viewport baca state via props, bukan context.
   const value = React.useMemo<ToastContextValue>(
     () => ({
-      toasts,
+      get toasts() {
+        return toastsRef.current;
+      },
       show,
       dismiss,
-      success: (title, opts) => {
-        const o = normaliseQuickInput(opts);
-        return show({ title, ...o, variant: "success" });
-      },
-      error: (title, opts) => {
-        const o = normaliseQuickInput(opts);
-        return show({
-          title,
-          ...o,
-          variant: "error",
-          duration: o.duration ?? 6000,
-        });
-      },
-      info: (title, opts) => {
-        const o = normaliseQuickInput(opts);
-        return show({ title, ...o, variant: "info" });
-      },
-      warning: (title, opts) => {
-        const o = normaliseQuickInput(opts);
-        return show({ title, ...o, variant: "warning" });
-      },
+      success,
+      error,
+      info,
+      warning,
     }),
-    [toasts, show, dismiss],
+    [show, dismiss, success, error, info, warning],
   );
+
+  // Ref agar getter `value.toasts` selalu mengembalikan snapshot terbaru
+  // tanpa menyebabkan `value` di-recreate.
+  const toastsRef = React.useRef<Toast[]>(toasts);
+  React.useEffect(() => {
+    toastsRef.current = toasts;
+  }, [toasts]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <ToastViewport />
+      <ToastViewport toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
 }
@@ -143,9 +172,13 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
-function ToastViewport() {
-  const ctx = React.useContext(ToastContext);
-  if (!ctx) return null;
+function ToastViewport({
+  toasts,
+  onDismiss,
+}: {
+  toasts: Toast[];
+  onDismiss: (id: string) => void;
+}) {
   return (
     <div
       role="region"
@@ -153,8 +186,8 @@ function ToastViewport() {
       className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-4 sm:bottom-4 sm:right-4 sm:left-auto sm:items-end"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}
     >
-      {ctx.toasts.map((t) => (
-        <ToastItem key={t.id} toast={t} onDismiss={() => ctx.dismiss(t.id)} />
+      {toasts.map((t) => (
+        <ToastItem key={t.id} toast={t} onDismiss={() => onDismiss(t.id)} />
       ))}
     </div>
   );

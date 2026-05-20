@@ -11,14 +11,23 @@ export default async function StokPage() {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: locsData } = await supabase
-    .from("locations")
-    .select("id, code, name, type")
-    .eq("is_active", true)
-    .order("type", { ascending: true })
-    .order("code", { ascending: true });
+  const [{ data: locsData }, { data: catData }] = await Promise.all([
+    supabase
+      .from("locations")
+      .select("id, code, name, type")
+      .eq("is_active", true)
+      .order("type", { ascending: true })
+      .order("code", { ascending: true }),
+    supabase
+      .from("product_categories")
+      .select("id, name, icon, color")
+      .eq("is_active", true)
+      .order("sort", { ascending: true })
+      .order("name", { ascending: true }),
+  ]);
 
   const locations = locsData ?? [];
+  const categories = catData ?? [];
 
   if (locations.length === 0) {
     return (
@@ -36,18 +45,9 @@ export default async function StokPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Operasional
-        </p>
-        <h1 className="text-2xl font-semibold">Stok</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ringkasan stok aktif per produk &amp; lokasi. Klik baris untuk
-          melihat batch detail. Update real-time saat batch berubah.
-        </p>
-      </header>
       <StockBoard
         locations={locations}
+        categories={categories}
         defaultLocationId={defaultLocationId}
       />
     </div>

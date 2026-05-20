@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { ProductionFormState, StockEntryFormState } from "./state";
 
 // ---------- Production batch (multi-item) ------------------------------
 
@@ -22,14 +23,6 @@ const productionBatchSchema = z.object({
   produced_at: z.string().min(1, "Wajib diisi"),
   items: z.array(productionItemSchema).min(1, "Minimal satu item"),
 });
-
-export type ProductionFormState = {
-  ok: boolean;
-  message?: string;
-  fieldErrors?: Partial<
-    Record<keyof z.input<typeof productionBatchSchema>, string>
-  >;
-};
 
 export async function recordProductionBatchAction(
   _prev: ProductionFormState,
@@ -103,12 +96,6 @@ const stockEntrySchema = z.object({
   entered_at: z.string().min(1, "Wajib diisi"),
   notes: z.string().trim().max(500).nullable(),
 });
-
-export type StockEntryFormState = {
-  ok: boolean;
-  message?: string;
-  fieldErrors?: Partial<Record<keyof z.input<typeof stockEntrySchema>, string>>;
-};
 
 function num(value: FormDataEntryValue | null): number | null {
   if (value == null) return null;

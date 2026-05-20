@@ -1,61 +1,58 @@
 import Link from "next/link";
 import { Receipt } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { SaleForm } from "./sale-form";
-import { SaleSuccessToast } from "./sale-success-toast";
+import { RegisterPageAction } from "@/components/register-page-action";
+import { PosBoard, type PosProduct } from "./pos-board";
+import type { SaleHistoryRow } from "./sale-history-sheet";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime, formatNumber } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Penjualan — Sistem Inventaris" };
 
-type SaleRow = {
-  id: string;
-  occurred_at: string;
-  notes: string | null;
-  location: { code: string; name: string } | null;
-  items: { quantity: number; product: { name: string; unit: string } | null }[];
-  created_by: { full_name: string } | null;
-};
-
-type SearchParams = Promise<{ ok?: string }>;
-
-export default async function PenjualanPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function PenjualanPage() {
   const me = await requireUser();
-  const sp = await searchParams;
   const isAdmin = me.profile?.role === "super_admin";
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: locsData }, { data: productsData }] = await Promise.all([
-    supabase
-      .from("locations")
-      .select("id, code, name, type")
-      .eq("is_active", true)
-      .order("code", { ascending: true }),
-    supabase
-      .from("products")
-      .select(
-        "id, sku, name, unit, is_perishable, expiry_warning_hours, expiry_discount_percent",
-      )
-      .eq("is_active", true)
-      .order("name", { ascending: true }),
-  ]);
+  const [{ data: locsData }, { data: productsData }, { data: categoriesData }] =
+    await Promise.all([
+      supabase
+        .from("locations")
+        .select("id, code, name, type")
+        .eq("is_active", true)
+        .order("code", { ascending: true }),
+      supabase
+        .from("products")
+        .select(
+          `
+            id, sku, name, unit, category_id,
+            is_perishable, expiry_warning_hours, expiry_discount_percent,
+            category:product_categories(id, name, icon, color)
+          `,
+        )
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+      supabase
+        .from("product_categories")
+        .select("id, code, name, icon, color, sort")
+        .eq("is_active", true)
+        .order("sort", { ascending: true })
+        .order("name", { ascending: true }),
+    ]);
 
   const locations = locsData ?? [];
-  const products = productsData ?? [];
+  const categories = categoriesData ?? [];
+
+  // Supabase PostgREST mengembalikan join FK sebagai array. Karena
+  // products.category_id adalah FK tunggal, kita flatten ke object | null.
+  const products = ((productsData ?? []) as unknown as Array<Record<string, unknown>>).map(
+    (p) => ({
+      ...p,
+      category: Array.isArray(p.category)
+        ? (p.category[0] as PosProduct["category"]) ?? null
+        : (p.category as PosProduct["category"]) ?? null,
+    }),
+  ) as unknown as PosProduct[];
   const myOutletId = me.profile?.outlet_id ?? null;
 
   // Outlet yang boleh dipilih sebagai lokasi penjualan.
@@ -63,7 +60,18 @@ export default async function PenjualanPage({
     ? locations.filter((l) => l.type === "outlet")
     : locations.filter((l) => l.id === myOutletId);
 
-  // Riwayat 20 transaksi terakhir untuk konteks.
+  // Riwayat hari ini (Asia/Jakarta) — cache awal untuk sheet kanan supaya
+  // buka pertama kali instan; sheet sendiri punya filter tanggal sendiri.
+  const startOfTodayJakarta = (() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return new Date(`${iso}T00:00:00+07:00`).toISOString();
+  })();
+  const endOfTodayJakarta = new Date(
+    new Date(startOfTodayJakarta).getTime() + 24 * 60 * 60 * 1000,
+  ).toISOString();
+
   const { data: salesData } = await supabase
     .from("sales")
     .select(
@@ -74,19 +82,14 @@ export default async function PenjualanPage({
         created_by:profiles(full_name)
       `,
     )
-    .order("occurred_at", { ascending: false })
-    .limit(20);
-  const sales = (salesData ?? []) as unknown as SaleRow[];
+    .gte("occurred_at", startOfTodayJakarta)
+    .lt("occurred_at", endOfTodayJakarta)
+    .order("occurred_at", { ascending: false });
+  const sales = (salesData ?? []) as unknown as SaleHistoryRow[];
 
   if (allowedOutlets.length === 0) {
     return (
       <div className="space-y-6">
-        <header>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Operasional
-          </p>
-          <h1 className="text-2xl font-semibold">Penjualan</h1>
-        </header>
         <EmptyState
           icon={Receipt}
           title="Belum ada outlet untuk Anda"
@@ -105,107 +108,24 @@ export default async function PenjualanPage({
     allowedOutlets[0].id;
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Operasional
-          </p>
-          <h1 className="text-2xl font-semibold">Penjualan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Catat transaksi multi-item. Stok dipotong otomatis FIFO; pilih
-            batch tertentu jika perlu override.
-          </p>
-        </div>
+    <div className="space-y-5">
+      <RegisterPageAction>
         <Link
           href="/eod"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
         >
           <Receipt className="h-4 w-4" />
           End of Day
         </Link>
-      </header>
+      </RegisterPageAction>
 
-      {sp.ok ? <SaleSuccessToast /> : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Catat transaksi</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SaleForm
-            outlets={allowedOutlets}
-            products={products}
-            defaultOutletId={defaultOutletId}
-          />
-        </CardContent>
-      </Card>
-
-      <div className="rounded-xl border bg-card">
-        <div className="flex items-center justify-between p-5 pb-3">
-          <h2 className="text-base font-semibold">Riwayat terbaru</h2>
-          <span className="text-xs text-muted-foreground">
-            20 transaksi terakhir
-          </span>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Waktu</TableHead>
-              <TableHead>Outlet</TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead className="text-right">Qty total</TableHead>
-              <TableHead>Kasir</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sales.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="py-10 text-center text-sm text-muted-foreground"
-                >
-                  Belum ada transaksi.
-                </TableCell>
-              </TableRow>
-            ) : (
-              sales.map((s) => {
-                const total = s.items.reduce(
-                  (sum, i) => sum + Number(i.quantity),
-                  0,
-                );
-                return (
-                  <TableRow key={s.id}>
-                    <TableCell className="text-sm">
-                      {formatDateTime(s.occurred_at)}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div>{s.location?.name ?? "—"}</div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {s.location?.code}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {s.items
-                        .map(
-                          (i) =>
-                            `${i.product?.name ?? "?"} × ${formatNumber(Number(i.quantity))}`,
-                        )
-                        .join(", ")}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(total)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {s.created_by?.full_name ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <PosBoard
+        outlets={allowedOutlets}
+        products={products}
+        categories={categories}
+        defaultOutletId={defaultOutletId}
+        history={sales}
+      />
     </div>
   );
 }

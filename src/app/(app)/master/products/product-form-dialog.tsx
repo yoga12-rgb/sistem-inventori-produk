@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
@@ -14,6 +15,7 @@ type Product = {
   sku: string;
   name: string;
   unit: string;
+  category_id: string | null;
   is_perishable: boolean;
   default_shelf_life_hours: number | null;
   expiry_warning_hours: number;
@@ -21,15 +23,23 @@ type Product = {
   is_active: boolean;
 };
 
+type Category = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
 const initialState: ProductFormState = { ok: false };
 
 export function ProductFormDialog({
   product,
+  categories,
   variant,
   size,
   children,
 }: {
   product?: Product;
+  categories: Category[];
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   children: React.ReactNode;
@@ -117,6 +127,26 @@ export function ProductFormDialog({
               required
               maxLength={120}
             />
+          </FormField>
+
+          <FormField
+            label="Kategori"
+            htmlFor="category_id"
+            error={state.fieldErrors?.category_id}
+            hint="Opsional. Kelola di Master Data → Kategori."
+          >
+            <Select
+              id="category_id"
+              name="category_id"
+              defaultValue={product?.category_id ?? ""}
+            >
+              <option value="">— Tanpa kategori —</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
           </FormField>
 
           <div className="rounded-lg border bg-background/50 p-4 space-y-4">

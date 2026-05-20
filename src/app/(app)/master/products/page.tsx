@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { RegisterPageAction } from "@/components/register-page-action";
 import {
   Table,
   TableBody,
@@ -15,11 +16,21 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Produk — Sistem Inventaris" };
 
+type Category = {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+  is_active: boolean;
+};
+
 type Product = {
   id: string;
   sku: string;
   name: string;
   unit: string;
+  category_id: string | null;
+  category: { id: string; name: string; icon: string | null; color: string | null } | null;
   is_perishable: boolean;
   default_shelf_life_hours: number | null;
   expiry_warning_hours: number;
@@ -31,33 +42,42 @@ export default async function ProductsPage() {
   await requireSuperAdmin();
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select(
-      "id, sku, name, unit, is_perishable, default_shelf_life_hours, expiry_warning_hours, expiry_discount_percent, is_active",
-    )
-    .order("name", { ascending: true });
+  const [{ data: prodData, error }, { data: catData }] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        `
+          id, sku, name, unit, category_id,
+          is_perishable, default_shelf_life_hours,
+          expiry_warning_hours, expiry_discount_percent, is_active,
+          category:product_categories(id, name, icon, color)
+        `,
+      )
+      .order("name", { ascending: true }),
+    supabase
+      .from("product_categories")
+      .select("id, name, icon, color, is_active")
+      .eq("is_active", true)
+      .order("sort", { ascending: true })
+      .order("name", { ascending: true }),
+  ]);
 
-  const products = (data ?? []) as Product[];
+  const products = ((prodData ?? []) as unknown as Product[]).map((p) => ({
+    ...p,
+    category: Array.isArray(p.category)
+      ? (p.category as unknown[])[0] as Product["category"] ?? null
+      : p.category ?? null,
+  }));
+  const categories = ((catData ?? []) as Category[]) ?? [];
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Master Data
-          </p>
-          <h1 className="text-2xl font-semibold">Produk</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Setiap varian punya SKU sendiri. Atur shelf life & saran diskon
-            untuk produk perishable.
-          </p>
-        </div>
-        <ProductFormDialog>
+      <RegisterPageAction>
+        <ProductFormDialog categories={categories}>
           <Plus className="h-4 w-4" />
           Tambah Produk
         </ProductFormDialog>
-      </header>
+      </RegisterPageAction>
 
       {error ? (
         <p className="text-sm text-destructive">{error.message}</p>
@@ -69,6 +89,7 @@ export default async function ProductsPage() {
             <TableRow>
               <TableHead>SKU</TableHead>
               <TableHead>Nama</TableHead>
+              <TableHead>Kategori</TableHead>
               <TableHead>Satuan</TableHead>
               <TableHead>Tipe</TableHead>
               <TableHead className="text-right">Shelf life</TableHead>
@@ -82,7 +103,7 @@ export default async function ProductsPage() {
             {products.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={10}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   Belum ada produk. Tambahkan varian pertama untuk memulai.
@@ -93,6 +114,27 @@ export default async function ProductsPage() {
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell>
+                    {p.category ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+                        style={
+                          p.category.color
+                            ? {
+                                borderColor: `${p.category.color}66`,
+                                backgroundColor: `${p.category.color}1f`,
+                                color: p.category.color,
+                              }
+                            : undefined
+                        }
+                      >
+                        {p.category.icon ? <span>{p.category.icon}</span> : null}
+                        {p.category.name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {p.unit}
                   </TableCell>
@@ -123,6 +165,7 @@ export default async function ProductsPage() {
                     <div className="inline-flex items-center gap-2">
                       <ProductFormDialog
                         product={p}
+                        categories={categories}
                         variant="outline"
                         size="sm"
                       >

@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TransferListFilters } from "./list-filters";
+import { RegisterPageAction } from "@/components/register-page-action";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -88,24 +89,15 @@ export default async function TransferListPage({
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Operasional
-          </p>
-          <h1 className="text-2xl font-semibold">Transfer</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Two-way memerlukan konfirmasi penerima. One-way langsung jadi.
-          </p>
-        </div>
+      <RegisterPageAction>
         <Link
           href="/transfer/baru"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
           Buat Transfer
         </Link>
-      </header>
+      </RegisterPageAction>
 
       <TransferListFilters
         locations={locations ?? []}

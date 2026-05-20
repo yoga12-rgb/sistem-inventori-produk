@@ -2,29 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   ArrowLeftRight,
   Boxes,
   Building2,
-  ChevronDown,
-  ClipboardList,
-  Database,
   FileText,
+  FolderTree,
   Grid3x3,
   LayoutDashboard,
   LogOut,
   Menu,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Receipt,
   Sparkles,
   Users,
-  Workflow,
 } from "lucide-react";
-import { signOutAction } from "@/app/(app)/actions";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
+import {
+  PageActionSlotOutlet,
+  PageActionSlotProvider,
+} from "@/components/page-action-slot";
+import { TopbarPageInfo } from "@/components/topbar-page-info";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TransferNotifier } from "@/components/transfer-notifier";
 import { cn } from "@/lib/utils";
@@ -39,98 +43,56 @@ type NavItem = {
   bottomBar?: boolean;
 };
 
-type NavGroup = {
-  /** Stable id (untuk localStorage). */
-  id: string;
-  /** Label tier-1 yang berfungsi sebagai dropdown trigger. */
-  label: string;
-  /** Ikon di sebelah label tier-1. */
-  icon: React.ComponentType<{ className?: string }>;
-  items: NavItem[];
-};
-
-type NavSchema = {
-  /** Item top-level (rendered tanpa dropdown — mis. Dashboard). */
-  topLevel: NavItem[];
-  /** Group yang punya tier-2. */
-  groups: NavGroup[];
-};
-
-const NAV: NavSchema = {
-  topLevel: [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard, bottomBar: true },
-  ],
-  groups: [
-    {
-      id: "operasional",
-      label: "Operasional",
-      icon: Workflow,
-      items: [
-        { href: "/stok", label: "Stok", icon: Boxes, bottomBar: true },
-        {
-          href: "/produksi",
-          label: "Produksi",
-          icon: Sparkles,
-          roles: ["super_admin"],
-        },
-        {
-          href: "/transfer",
-          label: "Transfer",
-          icon: ArrowLeftRight,
-          bottomBar: true,
-        },
-        {
-          href: "/penjualan",
-          label: "Penjualan",
-          icon: Receipt,
-          bottomBar: true,
-        },
-        { href: "/eod", label: "End of Day", icon: FileText },
-      ],
-    },
-    {
-      id: "laporan",
-      label: "Laporan",
-      icon: ClipboardList,
-      items: [
-        { href: "/matrix", label: "Inventory Matrix", icon: Grid3x3 },
-        {
-          href: "/aktivitas",
-          label: "Aktivitas",
-          icon: Activity,
-          roles: ["super_admin"],
-        },
-      ],
-    },
-    {
-      id: "master",
-      label: "Master Data",
-      icon: Database,
-      items: [
-        {
-          href: "/master/outlets",
-          label: "Outlet",
-          icon: Building2,
-          roles: ["super_admin"],
-        },
-        {
-          href: "/master/products",
-          label: "Produk",
-          icon: Package,
-          roles: ["super_admin"],
-        },
-        {
-          href: "/master/users",
-          label: "Pengguna",
-          icon: Users,
-          roles: ["super_admin"],
-        },
-      ],
-    },
-  ],
-};
-
-const STORAGE_KEY = "sidebar:groups";
+/** Flat menu — tanpa kategori. Urutan = urutan tampil di sidebar. */
+const NAV: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, bottomBar: true },
+  { href: "/stok", label: "Stok", icon: Boxes, bottomBar: true },
+  {
+    href: "/produksi",
+    label: "Produksi",
+    icon: Sparkles,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/transfer",
+    label: "Transfer",
+    icon: ArrowLeftRight,
+    bottomBar: true,
+  },
+  { href: "/penjualan", label: "Penjualan", icon: Receipt, bottomBar: true },
+  { href: "/eod", label: "End of Day", icon: FileText },
+  { href: "/matrix", label: "Inventory Matrix", icon: Grid3x3 },
+  {
+    href: "/aktivitas",
+    label: "Aktivitas",
+    icon: Activity,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/master/outlets",
+    label: "Outlet",
+    icon: Building2,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/master/categories",
+    label: "Kategori",
+    icon: FolderTree,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/master/products",
+    label: "Produk",
+    icon: Package,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/master/users",
+    label: "Pengguna",
+    icon: Users,
+    roles: ["super_admin"],
+  },
+];
 
 function matchesActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -141,62 +103,8 @@ function visibleItem(item: NavItem, role: Role): boolean {
   return !item.roles || (role !== null && item.roles.includes(role));
 }
 
-function visibleSchema(role: Role): NavSchema {
-  return {
-    topLevel: NAV.topLevel.filter((i) => visibleItem(i, role)),
-    groups: NAV.groups
-      .map((g) => ({ ...g, items: g.items.filter((i) => visibleItem(i, role)) }))
-      .filter((g) => g.items.length > 0),
-  };
-}
-
-/** State expand/collapse per grup, persist di localStorage. */
-function useGroupState(groups: NavGroup[], pathname: string) {
-  const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
-    // Default: semua expanded (akan dioverride oleh saved state via effect).
-    return Object.fromEntries(groups.map((g) => [g.id, true]));
-  });
-
-  // Restore dari localStorage sekali saat mount.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Record<string, boolean>;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOpenMap((prev) => ({ ...prev, ...saved }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  // Pastikan grup yang berisi route aktif selalu terbuka.
-  useEffect(() => {
-    const groupWithActive = groups.find((g) =>
-      g.items.some((i) => matchesActive(pathname, i.href)),
-    );
-    if (!groupWithActive) return;
-    if (openMap[groupWithActive.id]) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpenMap((prev) => ({ ...prev, [groupWithActive.id]: true }));
-  }, [pathname, groups, openMap]);
-
-  const toggle = useCallback((id: string) => {
-    setOpenMap((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  return { openMap, toggle };
+function visibleNav(role: Role): NavItem[] {
+  return NAV.filter((i) => visibleItem(i, role));
 }
 
 export function AppShell({
@@ -215,14 +123,60 @@ export function AppShell({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const schema = useMemo(() => visibleSchema(user.role), [user.role]);
-  const { openMap, toggle } = useGroupState(schema.groups, pathname);
+  // Toggle sidebar (desktop). State: expanded (default) ↔ collapsed (rail).
+  // Saat collapsed, hover ikon menampilkan tooltip kecil — bukan expand penuh.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("sidebar:collapsed");
+    if (saved === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSidebarCollapsed(true);
+    }
+  }, []);
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            "sidebar:collapsed",
+            next ? "1" : "0",
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  }, []);
 
-  const allVisibleItems = useMemo(
-    () => [...schema.topLevel, ...schema.groups.flatMap((g) => g.items)],
-    [schema],
-  );
-  const bottomBarNav = allVisibleItems.filter((i) => i.bottomBar).slice(0, 4);
+  // Saat collapsed, sidebar tetap rail. `sidebarExpanded` = invers untuk
+  // dipakai render header & footer.
+  const sidebarExpanded = !sidebarCollapsed;
+
+  // Keyboard shortcut: Ctrl/Cmd+B toggle sidebar (desktop saja).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        const t = e.target as HTMLElement | null;
+        const inField =
+          t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable);
+        if (inField) return;
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleSidebar]);
+
+  const navItems = useMemo(() => visibleNav(user.role), [user.role]);
+
+  const bottomBarNav = navItems.filter((i) => i.bottomBar).slice(0, 4);
 
   const roleLabel =
     user.role === "super_admin"
@@ -232,73 +186,145 @@ export function AppShell({
         : "Tanpa profil";
 
   return (
-    <div className="flex min-h-dvh">
+    <PageActionSlotProvider>
+      <div className="flex min-h-dvh">
       {user.outletId ? (
         <TransferNotifier myOutletId={user.outletId} myUserId={user.id} />
       ) : null}
 
       {/* ===== Sidebar (desktop only) ===== */}
-      <aside className="sticky top-0 hidden h-dvh w-64 flex-shrink-0 flex-col border-r bg-card lg:flex">
-        <div className="flex h-16 items-center gap-2 border-b px-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-semibold tracking-tight"
-          >
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
-              <Package className="h-4 w-4" />
-            </span>
-            <span>Inventaris</span>
-          </Link>
+      {/*
+        Pola "icon-rail collapse":
+        - Default `w-64` (expanded, label penuh).
+        - Saat `sidebarCollapsed`, lebar rail jadi `w-14` (icon-only).
+          Hover ikon menampilkan tooltip floating dengan label, bukan
+          expand sidebar.
+      */}
+      <aside
+        className={cn(
+          "sticky top-0 hidden h-dvh flex-shrink-0 flex-col border-r bg-card transition-[width] duration-200 ease-out lg:flex",
+          sidebarCollapsed ? "w-14 overflow-visible" : "w-64 overflow-hidden",
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-16 items-center gap-2 border-b",
+            sidebarExpanded ? "justify-between px-4" : "justify-center px-2",
+          )}
+        >
+          {sidebarExpanded ? (
+            <Link
+              href="/"
+              className="flex items-center gap-2 font-semibold tracking-tight"
+            >
+              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
+                <Package className="h-4 w-4" />
+              </span>
+              <span>Inventaris</span>
+            </Link>
+          ) : (
+            <Link href="/" aria-label="Inventaris">
+              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
+                <Package className="h-4 w-4" />
+              </span>
+            </Link>
+          )}
+          {sidebarExpanded ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              aria-label={
+                sidebarCollapsed ? "Pin sidebar terbuka" : "Sembunyikan sidebar"
+              }
+              title={`${sidebarCollapsed ? "Pin sidebar" : "Sembunyikan sidebar"} (Ctrl+B)`}
+              className="flex-shrink-0"
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+            </Button>
+          ) : null}
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3">
+        <nav
+          className={cn(
+            "flex-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
+            sidebarExpanded
+              ? "overflow-y-auto p-3"
+              : "overflow-visible px-2 py-2",
+          )}
+        >
           <SidebarTree
-            schema={schema}
+            items={navItems}
             pathname={pathname}
-            openMap={openMap}
-            onToggle={toggle}
+            collapsed={sidebarCollapsed}
           />
         </nav>
 
-        <div className="border-t p-3">
-          <div className="mb-2 px-2">
-            <div className="text-sm font-medium leading-tight">
-              {user.fullName}
-            </div>
-            <div className="text-xs text-muted-foreground">{roleLabel}</div>
-          </div>
-          <form action={signOutAction}>
-            <Button
-              variant="outline"
-              size="sm"
-              type="submit"
-              className="w-full justify-center"
-            >
-              <LogOut className="h-4 w-4" />
-              Keluar
-            </Button>
-          </form>
+        <div
+          className={cn(
+            "border-t",
+            sidebarExpanded ? "p-3" : "px-2 py-3",
+          )}
+        >
+          {sidebarExpanded ? (
+            <>
+              <div className="mb-2 px-2">
+                <div className="text-sm font-medium leading-tight">
+                  {user.fullName}
+                </div>
+                <div className="text-xs text-muted-foreground">{roleLabel}</div>
+              </div>
+              <form action="/logout" method="POST">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="submit"
+                  className="w-full justify-center"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Keluar
+                </Button>
+              </form>
+            </>
+          ) : (
+            <form action="/logout" method="POST" className="flex justify-center">
+              <Button
+                variant="outline"
+                size="icon"
+                type="submit"
+                title="Keluar"
+                aria-label="Keluar"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </form>
+          )}
         </div>
       </aside>
 
       {/* ===== Main column ===== */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
+        {/* Mobile/tablet top bar — judul halaman + ⓘ + theme toggle. */}
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-card/95 px-4 backdrop-blur lg:hidden">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
-              <Package className="h-4 w-4" />
-            </span>
-            <span className="text-sm">Inventaris</span>
-          </Link>
-          <div className="flex items-center gap-1">
+          <TopbarPageInfo className="flex-1" />
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <PageActionSlotOutlet />
             <ThemeToggle />
           </div>
         </header>
 
-        {/* Desktop top bar */}
-        <header className="sticky top-0 z-30 hidden h-16 items-center justify-end gap-3 border-b bg-card/80 px-6 backdrop-blur lg:flex">
-          <ThemeToggle />
+        {/* Desktop top bar — judul halaman + ⓘ kiri, slot aksi + theme toggle kanan. */}
+        <header className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-3 border-b bg-card/80 px-6 backdrop-blur lg:flex">
+          <TopbarPageInfo className="flex-1" />
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <PageActionSlotOutlet />
+            <ThemeToggle />
+          </div>
         </header>
 
         <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
@@ -347,15 +373,13 @@ export function AppShell({
         <div className="flex h-full flex-col">
           <nav className="flex-1 overflow-y-auto p-3">
             <SidebarTree
-              schema={schema}
+              items={navItems}
               pathname={pathname}
-              openMap={openMap}
-              onToggle={toggle}
               onNavigate={() => setMenuOpen(false)}
             />
           </nav>
           <div className="border-t p-3">
-            <form action={signOutAction}>
+            <form action="/logout" method="POST">
               <Button
                 variant="outline"
                 type="submit"
@@ -368,106 +392,51 @@ export function AppShell({
           </div>
         </div>
       </Sheet>
-    </div>
+      </div>
+    </PageActionSlotProvider>
   );
 }
 
 function SidebarTree({
-  schema,
+  items,
   pathname,
-  openMap,
-  onToggle,
   onNavigate,
+  collapsed,
 }: {
-  schema: NavSchema;
+  items: NavItem[];
   pathname: string;
-  openMap: Record<string, boolean>;
-  onToggle: (id: string) => void;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
+  if (collapsed) {
+    return (
+      <ul className="space-y-0.5">
+        {items.map((item) => (
+          <li key={item.href}>
+            <SidebarLeafLink
+              item={item}
+              active={matchesActive(pathname, item.href)}
+              onNavigate={onNavigate}
+              collapsed
+            />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
-    <div className="space-y-1">
-      {/* Tier-0 / top-level items (mis. Dashboard) */}
-      {schema.topLevel.length > 0 ? (
-        <ul className="space-y-0.5">
-          {schema.topLevel.map((item) => (
-            <li key={item.href}>
-              <SidebarLeafLink
-                item={item}
-                active={matchesActive(pathname, item.href)}
-                onNavigate={onNavigate}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {/* Tier-1 group (collapsible) */}
-      {schema.groups.map((group) => {
-        const open = openMap[group.id] ?? true;
-        const containsActive = group.items.some((i) =>
-          matchesActive(pathname, i.href),
-        );
-        const panelId = `nav-section-${group.id}`;
-        return (
-          <div key={group.id} className="pt-1">
-            <button
-              type="button"
-              onClick={() => onToggle(group.id)}
-              aria-expanded={open}
-              aria-controls={panelId}
-              className={cn(
-                "group/btn flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                containsActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <group.icon className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 truncate text-left">{group.label}</span>
-              <ChevronDown
-                className={cn(
-                  "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform duration-200",
-                  open ? "rotate-0" : "-rotate-90",
-                )}
-                aria-hidden
-              />
-            </button>
-
-            {/* Tier-2 items — animasi via grid template rows trick */}
-            <div
-              id={panelId}
-              role="region"
-              aria-labelledby={panelId}
-              className={cn(
-                "grid transition-[grid-template-rows] duration-200 ease-out",
-                open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-              )}
-            >
-              <div className="overflow-hidden">
-                <ul
-                  className={cn(
-                    "ml-4 mt-1 space-y-0.5 border-l border-border pl-2 transition-opacity duration-200",
-                    open ? "opacity-100" : "opacity-0",
-                  )}
-                >
-                  {group.items.map((item) => (
-                    <li key={item.href}>
-                      <SidebarLeafLink
-                        item={item}
-                        active={matchesActive(pathname, item.href)}
-                        onNavigate={onNavigate}
-                        nested
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <ul className="space-y-0.5">
+      {items.map((item) => (
+        <li key={item.href}>
+          <SidebarLeafLink
+            item={item}
+            active={matchesActive(pathname, item.href)}
+            onNavigate={onNavigate}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -476,12 +445,18 @@ function SidebarLeafLink({
   active,
   onNavigate,
   nested,
+  collapsed,
 }: {
   item: NavItem;
   active: boolean;
   onNavigate?: () => void;
   nested?: boolean;
+  collapsed?: boolean;
 }) {
+  if (collapsed) {
+    return <CollapsedSidebarLink item={item} active={active} onNavigate={onNavigate} />;
+  }
+
   return (
     <Link
       href={item.href}
@@ -498,6 +473,108 @@ function SidebarLeafLink({
       <item.icon className="h-4 w-4 flex-shrink-0" />
       <span className="truncate">{item.label}</span>
     </Link>
+  );
+}
+
+/**
+ * Versi collapsed dari sidebar link — tooltip dirender via portal ke
+ * `document.body` agar tidak terjebak stacking context `<aside sticky>`.
+ * Tanpa portal, z-index tooltip diukur relatif ke aside dan akan kalah
+ * melawan popover Select (yang juga di portal document.body).
+ */
+function CollapsedSidebarLink({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  const linkRef = useRef<HTMLAnchorElement | null>(null);
+  const [hovered, setHovered] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const showTimerRef = useRef<number | null>(null);
+
+  const computeCoords = useCallback(() => {
+    const el = linkRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setCoords({ top: r.top + r.height / 2, left: r.right + 8 });
+  }, []);
+
+  const onEnter = () => {
+    computeCoords();
+    if (showTimerRef.current != null) {
+      window.clearTimeout(showTimerRef.current);
+    }
+    showTimerRef.current = window.setTimeout(() => setHovered(true), 300);
+  };
+  const onLeave = () => {
+    if (showTimerRef.current != null) {
+      window.clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
+    setHovered(false);
+  };
+
+  // Reposition ketika hover (sidebar bisa di-scroll).
+  useEffect(() => {
+    if (!hovered) return;
+    const onScrollOrResize = () => computeCoords();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [hovered, computeCoords]);
+
+  // Cleanup timer saat unmount.
+  useEffect(() => {
+    return () => {
+      if (showTimerRef.current != null) {
+        window.clearTimeout(showTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <>
+      <Link
+        ref={linkRef}
+        href={item.href}
+        onClick={onNavigate}
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
+        onFocus={onEnter}
+        onBlur={onLeave}
+        aria-current={active ? "page" : undefined}
+        aria-label={item.label}
+        className={cn(
+          "mx-auto grid h-9 w-9 place-items-center rounded-md transition-colors",
+          active
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <item.icon className="h-4 w-4" />
+      </Link>
+      {hovered && coords && typeof window !== "undefined"
+        ? createPortal(
+            <span
+              role="tooltip"
+              className="pointer-events-none fixed z-[200] -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+              style={{ top: coords.top, left: coords.left }}
+            >
+              {item.label}
+            </span>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

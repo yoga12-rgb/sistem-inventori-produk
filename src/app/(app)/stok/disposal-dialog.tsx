@@ -102,14 +102,15 @@ export function DisposalDialog({
             <Select
               id="movement_type"
               name="movement_type"
-              defaultValue={isPerishable ? "expired_out" : "damage_out"}
+              defaultValue={isPerishable ? "expired_out" : "compliment_out"}
               required
             >
               {isPerishable ? (
                 <option value="expired_out">Expired</option>
               ) : null}
+              <option value="compliment_out">Compliment</option>
+              <option value="tester_out">Tester</option>
               <option value="damage_out">Rusak / waste</option>
-              <option value="adjustment_out">Penyesuaian (selisih)</option>
             </Select>
           </FormField>
 

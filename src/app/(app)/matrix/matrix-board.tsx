@@ -43,6 +43,8 @@ type MatrixRow = {
   sold: number;
   expired_out: number;
   damage_out: number;
+  compliment_out: number;
+  tester_out: number;
   adjustment_in: number;
   adjustment_out: number;
   closing: number;
@@ -88,6 +90,23 @@ function formatHumanDate(iso: string): string {
     month: "long",
     year: "numeric",
   });
+}
+
+/**
+ * Cycle filter lokasi: "all" → semua lokasi (urut sesuai array) → "all".
+ * Saat outlet kosong, tetap return "all" (no-op).
+ */
+function cycleLocation(
+  locations: Location[],
+  current: string | "all",
+  direction: -1 | 1,
+): string | "all" {
+  if (locations.length === 0) return "all";
+  // Urutan siklus: ["all", ...locations[].id]
+  const ids: Array<string | "all"> = ["all", ...locations.map((l) => l.id)];
+  const idx = ids.indexOf(current);
+  const nextIdx = idx === -1 ? 0 : (idx + direction + ids.length) % ids.length;
+  return ids[nextIdx];
 }
 
 export function MatrixBoard({
@@ -141,7 +160,7 @@ export function MatrixBoard({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-center gap-1">
+        <div className="flex items-end gap-1">
           <Button
             variant="outline"
             size="icon"
@@ -178,26 +197,58 @@ export function MatrixBoard({
           </Button>
         </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">
-            Lokasi
-          </span>
-          <Select
-            value={locationId}
-            onChange={(e) =>
-              setLocationId(e.currentTarget.value as string | "all")
+        <div className="flex items-end gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Lokasi sebelumnya"
+            onClick={() =>
+              setLocationId((cur) => cycleLocation(locations, cur, -1))
             }
-            className="min-w-60"
+            disabled={locations.length === 0}
           >
-            <option value="all">Semua lokasi</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code} — {l.name}{" "}
-                {l.type === "central_kitchen" ? "(CP)" : ""}
-              </option>
-            ))}
-          </Select>
-        </label>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Lokasi
+            </span>
+            <Select
+              value={locationId}
+              onChange={(e) =>
+                setLocationId(e.currentTarget.value as string | "all")
+              }
+              className="min-w-60"
+            >
+              <option value="all">Semua lokasi</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.code} — {l.name}{" "}
+                  {l.type === "central_kitchen" ? "(CP)" : ""}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Lokasi berikutnya"
+            onClick={() =>
+              setLocationId((cur) => cycleLocation(locations, cur, +1))
+            }
+            disabled={locations.length === 0}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setLocationId("all")}
+            disabled={locationId === "all"}
+          >
+            Semua
+          </Button>
+        </div>
 
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
@@ -219,17 +270,20 @@ export function MatrixBoard({
               <TableHead>Lokasi</TableHead>
               <TableHead className="text-right">Stok awal</TableHead>
               <TableHead className="text-right">Masuk</TableHead>
-              <TableHead className="text-right">Terjual</TableHead>
               <TableHead className="text-right">Transfer in</TableHead>
               <TableHead className="text-right">Transfer out</TableHead>
-              <TableHead className="text-right">Buang</TableHead>
+              <TableHead className="text-right">Terjual</TableHead>
+              <TableHead className="text-right">Expired</TableHead>
+              <TableHead className="text-right">Compliment</TableHead>
+              <TableHead className="text-right">Tester</TableHead>
+              <TableHead className="text-right">Rusak</TableHead>
               <TableHead className="text-right">Stok akhir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {!loading && rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="py-10">
+                <TableCell colSpan={12} className="py-10">
                   <EmptyState
                     title="Tidak ada aktivitas"
                     description="Belum ada stok atau movement untuk filter ini. Coba tanggal lain atau lokasi lain."
@@ -239,7 +293,6 @@ export function MatrixBoard({
             ) : (
               rows.map((r) => {
                 const incoming = r.produced_in + r.entered_in + r.adjustment_in;
-                const discarded = r.expired_out + r.damage_out + r.adjustment_out;
                 return (
                   <TableRow key={`${r.product_id}-${r.location_id}`}>
                     <TableCell>
@@ -264,7 +317,6 @@ export function MatrixBoard({
                       value={r.opening}
                       unit={r.unit}
                       muted
-                      // Opening tidak punya drilldown — itu hasil rollup pra-tanggal.
                     />
                     <Cell
                       value={incoming}
@@ -280,16 +332,6 @@ export function MatrixBoard({
                         { label: "Stok masuk", value: r.entered_in },
                         { label: "Adjustment in", value: r.adjustment_in },
                       ]}
-                    />
-                    <Cell
-                      value={r.sold}
-                      unit={r.unit}
-                      productId={r.product_id}
-                      locationId={r.location_id}
-                      date={date}
-                      kind="sold"
-                      productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
                     />
                     <Cell
                       value={r.transfer_in}
@@ -312,20 +354,54 @@ export function MatrixBoard({
                       locationLabel={`${r.location_code} — ${r.location_name}`}
                     />
                     <Cell
-                      value={discarded}
+                      value={r.sold}
                       unit={r.unit}
                       productId={r.product_id}
                       locationId={r.location_id}
                       date={date}
-                      kind="out"
+                      kind="sold"
                       productName={r.product_name}
                       locationLabel={`${r.location_code} — ${r.location_name}`}
-                      breakdown={[
-                        { label: "Expired", value: r.expired_out },
-                        { label: "Rusak", value: r.damage_out },
-                        { label: "Adjustment out", value: r.adjustment_out },
-                      ]}
-                      filterKinds={["expired", "damage", "adjustment_out"]}
+                    />
+                    <Cell
+                      value={r.expired_out}
+                      unit={r.unit}
+                      productId={r.product_id}
+                      locationId={r.location_id}
+                      date={date}
+                      kind="expired"
+                      productName={r.product_name}
+                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                    />
+                    <Cell
+                      value={r.compliment_out}
+                      unit={r.unit}
+                      productId={r.product_id}
+                      locationId={r.location_id}
+                      date={date}
+                      kind="compliment"
+                      productName={r.product_name}
+                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                    />
+                    <Cell
+                      value={r.tester_out}
+                      unit={r.unit}
+                      productId={r.product_id}
+                      locationId={r.location_id}
+                      date={date}
+                      kind="tester"
+                      productName={r.product_name}
+                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                    />
+                    <Cell
+                      value={r.damage_out}
+                      unit={r.unit}
+                      productId={r.product_id}
+                      locationId={r.location_id}
+                      date={date}
+                      kind="damage"
+                      productName={r.product_name}
+                      locationLabel={`${r.location_code} — ${r.location_name}`}
                     />
                     <CellNumeric
                       value={r.closing}

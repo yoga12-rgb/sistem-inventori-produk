@@ -1,4 +1,4 @@
-# Business Logic
+﻿# Business Logic
 
 ## 1. Produksi & Pemasukan Stok
 
@@ -13,7 +13,7 @@ Saat insert `stock_batches`:
 
 ## 2. Pemotongan Stok (FIFO + Manual Override)
 
-Berlaku untuk: `sale_out`, `expired_out`, `damage_out`, `adjustment_out`.
+Berlaku untuk: `sale_out`, `expired_out`, `compliment_out`, `tester_out`, `damage_out`, `adjustment_out`.
 
 ```
 function deduct(product_id, location_id, qty, override_batch_id?):
@@ -70,7 +70,11 @@ Untuk `is_perishable = false`:
 
 - 1 transaksi `sales` boleh berisi banyak `sale_items` (multi-varian).
 - Tidak ada harga, metode bayar, atau pajak â€” sistem fokus stok.
-- `sale_items.override_batch_id` opsional; jika kosong â†’ FIFO otomatis.
+- Model cart menggunakan `splits[]` per item (menggantikan single `override_batch_id`).
+  Tiap split = `{ batch_id: string | null, quantity: number }`.
+- Mode "Otomatis (FIFO)": batch dipilih otomatis, UI menampilkan preview distribusi.
+- Mode "Pilih batch manual": kasir input qty per batch, total harus cocok.
+- Server mengirim tiap split sebagai `sale_item` terpisah ke `fn_record_sale`.
 
 ## 6. End-of-Day (EOD) Report
 
@@ -85,6 +89,12 @@ Terjual
 <Produk A>: <qty> <unit>
 <Produk B>: <qty> <unit>
 â€¦
+
+Disposal
+âŒ <Produk>: <qty> <unit> (Expired)
+ðŸŽ <Produk>: <qty> <unit> (Compliment)
+ðŸ§ª <Produk>: <qty> <unit> (Tester)
+ðŸ—‘ï¸ <Produk>: <qty> <unit> (Rusak)
 
 Stock Update
 <Produk A>: <total sisa> <unit>
@@ -106,11 +116,15 @@ Per tanggal & per produk, kolom:
 | Kolom | Sumber |
 |---|---|
 | Stok Awal | Snapshot `remaining_qty` per batch â‰¤ 00:00 tanggal terpilih |
-| Produksi/Masuk | `SUM(qty)` movement `production_in + entry_in` di tanggal itu |
-| Terjual | `SUM(qty)` movement `sale_out` |
+| Masuk | `SUM(qty)` movement `production_in + entry_in` di tanggal itu |
 | Transfer In | `SUM(qty)` movement `transfer_in` |
 | Transfer Out | `SUM(qty)` movement `transfer_out` |
-| Stok Akhir | Stok Awal + In âˆ’ Out |
+| Terjual | `SUM(qty)` movement `sale_out` |
+| Expired | `SUM(qty)` movement `expired_out` |
+| Compliment | `SUM(qty)` movement `compliment_out` |
+| Tester | `SUM(qty)` movement `tester_out` |
+| Rusak | `SUM(qty)` movement `damage_out` |
+| Stok Akhir | Stok Awal + Masuk + Transfer In âˆ’ Transfer Out âˆ’ Terjual âˆ’ Expired âˆ’ Compliment âˆ’ Tester âˆ’ Rusak |
 
 Filter outlet (single / all) disimpan di `localStorage` dengan key
 `inventory-matrix:filters` agar persisten antar reload.
@@ -177,6 +191,14 @@ Hanya Super Admin. Dibagi menjadi dua kartu:
 Kedua form memanggil RPC ke `fn_record_production` / `fn_record_stock_entry`
 agar logika kedaluwarsa dan validasi lokasi dipusatkan di DB.
 
+### Riwayat Produksi (`production-history.tsx`)
+
+Komponen tambahan di halaman `/produksi` yang menampilkan tabel batch
+yang diproduksi pada tanggal terpilih:
+
+- **Date navigator** (â—€/â–¶/Today) untuk memilih tanggal
+- **Filter lokasi** Central Pastry, persisted di `localStorage`
+- **Kolom tabel:** Waktu, Produk, Lokasi, Qty, Kedaluwarsa, Aktor, Catatan
 ### Halaman Stok (`/stok`)
 
 Tersedia untuk semua peran. Sumber data: view `v_stock_per_location`.
@@ -267,26 +289,41 @@ memfilter daftar transfer ke status pending + outlet kasir.
 
 ## Lampiran D â€” Penjualan, Disposal & EOD (Iterasi 4)
 
-### Halaman Penjualan (`/penjualan`)
+### Halaman Penjualan (`/penjualan`) â€” POS Redesign
 
-- Multi-item per transaksi. Tiap baris: produk + qty + (opsional) override
-  batch.
-- Validasi klien-side: total qty per produk â‰¤ total `remaining_qty` di
-  outlet, atau â‰¤ batch terpilih jika override. Server tetap memvalidasi via
-  `fn_record_sale` + `fn_deduct_stock_fifo`.
-- Warning expired terdekat (per baris) muncul ketika produk perishable
-  punya batch dengan `expires_at - now() â‰¤ expiry_warning_hours`. Saran
-  diskon ditampilkan sebagai badge di samping warning.
-- Riwayat 20 transaksi terakhir di-render dari `sales` + `sale_items`.
+UI diubah total dari form-based menjadi POS-style layout:
 
+**Layout:**
+- Dua kolom: product grid (kiri) + sticky cart (kanan)
+- Product card dengan tap-to-add, qty badge, category badge, expiry warning
+- Search bar + filter tabs (Semua / Perishable / Non-perishable / Hampir expired)
+- Category filter chips (AND logic dengan tabs di atas)
+
+**Cart:**
+- Stepper (+/âˆ’) per item, batch picker modal, notes field
+- Multi-batch split per item (lihat Â§5 di atas)
+- Mobile: floating cart bar + bottom sheet
+
+**Keyboard shortcuts:** `/` focus search, `Ctrl+Enter` submit
+
+**Realtime:** stok di-update setelah sale + manual refetch fallback
+
+**Riwayat:** dipindah ke Sheet dengan date filter (â—€/â–¶/Today)
+
+**Validasi:** total qty per produk â‰¤ total `remaining_qty` di outlet.
+Server tetap memvalidasi via `fn_record_sale` + `fn_deduct_stock_fifo`.
 ### Disposal (modal di `/stok`)
 
 Tombol "Buang" per baris stok membuka modal yang memanggil
 `fn_record_disposal`:
 
 - **Expired** â€” hanya muncul untuk produk perishable.
+- **Compliment** â€” diberikan sebagai hadiah/sample ke pelanggan.
+- **Tester** â€” dijadikan tester/sample untuk promosi.
 - **Rusak / waste** â€” produk apa saja.
-- **Penyesuaian** â€” selisih stok hasil opname.
+
+> **Catatan:** Adjustment tidak ditampilkan di UI disposal (hanya dipakai
+> internal oleh sistem untuk pembatalan transfer).
 
 Default batch = FIFO. Pilih batch spesifik untuk membuang dari produksi
 tertentu (mis. saat opname menemukan lot kontaminasi).
@@ -330,13 +367,16 @@ Satu tabel per tanggal Ã— lokasi. Kolom (kiri ke kanan):
 
 | Kolom | Sumber |
 |---|---|
-| Stok awal | Net movement sebelum 00:00 tanggal terpilih |
+| Stok Awal | Net movement sebelum 00:00 tanggal terpilih |
 | Masuk | `production_in + entry_in + adjustment_in` |
+| Transfer In | `transfer_in` |
+| Transfer Out | `transfer_out` |
 | Terjual | `sale_out` |
-| Transfer in | `transfer_in` |
-| Transfer out | `transfer_out` |
-| Buang | `expired_out + damage_out + adjustment_out` |
-| Stok akhir | Stok awal + Masuk + Transfer in âˆ’ Transfer out âˆ’ Terjual âˆ’ Buang |
+| Expired | `expired_out` |
+| Compliment | `compliment_out` |
+| Tester | `tester_out` |
+| Rusak | `damage_out` |
+| Stok Akhir | Stok Awal + Masuk + Transfer In âˆ’ Transfer Out âˆ’ Terjual âˆ’ Expired âˆ’ Compliment âˆ’ Tester âˆ’ Rusak |
 
 Catatan: kolom **Masuk** dan **Buang** menggabungkan beberapa movement
 type. Modal drilldown menampilkan breakdown per komponen (mis. Produksi
@@ -374,6 +414,34 @@ iterasi polishing.
 
 ---
 
+## Lampiran G â€” Kategori Produk (Iterasi 7)
+
+### Tabel `product_categories`
+
+Master kategori produk (id, code, name, icon, color, sort, is_active).
+Produk memiliki nullable `category_id` FK ke tabel ini.
+
+### Halaman `/master/categories` (Super Admin only)
+
+CRUD kategori dengan field: kode, nama, icon, warna, urutan.
+Menu sidebar: Master Data â†’ Kategori (antara Outlet dan Produk).
+
+### Integrasi ke halaman lain
+
+- **Form produk:** dropdown Category
+- **List produk:** badge kategori berwarna
+- **POS (`/penjualan`):** category filter chips (AND dengan tabs existing)
+- **Stok (`/stok`):** category filter chips + kolom Kategori di tabel
+- **View `v_stock_per_location`:** extended dengan kolom `category_code`
+  dan `category_name` via join ke `product_categories`
+
+### RLS
+
+- Read: semua authenticated user
+- Write (insert/update/delete): hanya `super_admin`
+
+
+---
 ## Lampiran F â€” Polishing (Iterasi 6)
 
 ### Toast system

@@ -33,6 +33,10 @@ type StockRow = {
   product_name: string;
   unit: string;
   is_perishable: boolean;
+  category_id: string | null;
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
   location_id: string;
   location_code: string;
   location_name: string;
@@ -63,6 +67,13 @@ type Product = {
 
 const FILTER_KEY = "stock-board:filters";
 
+type CategoryOption = {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+};
+
 type FilterState = { locationId: string | "all" };
 
 function readSavedFilter(): FilterState | null {
@@ -80,15 +91,18 @@ function readSavedFilter(): FilterState | null {
 
 export function StockBoard({
   locations,
+  categories,
   defaultLocationId,
 }: {
   locations: Location[];
+  categories: CategoryOption[];
   defaultLocationId: string | null;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [locationId, setLocationId] = useState<string | "all">(
     () => readSavedFilter()?.locationId ?? defaultLocationId ?? "all",
   );
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [rows, setRows] = useState<StockRow[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [loading, setLoading] = useState(true);
@@ -109,7 +123,7 @@ export function StockBoard({
     let query = supabase
       .from("v_stock_per_location")
       .select(
-        "product_id, sku, product_name, unit, is_perishable, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
+        "product_id, sku, product_name, unit, is_perishable, category_id, category_name, category_icon, category_color, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
       )
       .order("product_name", { ascending: true });
     if (locationId !== "all") query = query.eq("location_id", locationId);
@@ -168,6 +182,14 @@ export function StockBoard({
     };
   }, [supabase, refresh]);
 
+  const filteredRows = useMemo(() => {
+    if (categoryFilter === "all") return rows;
+    return rows.filter((r) => {
+      if (categoryFilter === "none") return r.category_id == null;
+      return r.category_id === categoryFilter;
+    });
+  }, [rows, categoryFilter]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -195,6 +217,66 @@ export function StockBoard({
         </Button>
       </div>
 
+      {/* Filter kategori */}
+      {categories.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter("all")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              categoryFilter === "all"
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            Semua kategori
+          </button>
+          {categories.map((c) => {
+            const active = categoryFilter === c.id;
+            const style =
+              active && c.color
+                ? {
+                    borderColor: `${c.color}80`,
+                    backgroundColor: `${c.color}1f`,
+                    color: c.color,
+                  }
+                : undefined;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoryFilter(c.id)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  active
+                    ? c.color
+                      ? ""
+                      : "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+                style={style}
+              >
+                {c.icon ? <span>{c.icon}</span> : null}
+                {c.name}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setCategoryFilter("none")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              categoryFilter === "none"
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            Tanpa kategori
+          </button>
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="rounded-xl border bg-card">
@@ -202,6 +284,7 @@ export function StockBoard({
           <TableHeader>
             <TableRow>
               <TableHead>Produk</TableHead>
+              <TableHead>Kategori</TableHead>
               <TableHead>Lokasi</TableHead>
               <TableHead className="text-right">Total stok</TableHead>
               <TableHead className="text-right">Batch</TableHead>
@@ -210,9 +293,9 @@ export function StockBoard({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!loading && rows.length === 0 ? (
+            {!loading && filteredRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-10">
+                <TableCell colSpan={7} className="py-10">
                   <EmptyState
                     title="Belum ada stok"
                     description="Catat produksi atau stok masuk untuk mulai mengisi inventaris."
@@ -220,7 +303,7 @@ export function StockBoard({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((r) => {
+              filteredRows.map((r) => {
                 const product = productsById[r.product_id];
                 const warningHours = product?.expiry_warning_hours ?? 24;
                 const isWarning =
@@ -234,6 +317,27 @@ export function StockBoard({
                       <div className="font-mono text-xs text-muted-foreground">
                         {r.sku}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {r.category_name ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+                          style={
+                            r.category_color
+                              ? {
+                                  borderColor: `${r.category_color}66`,
+                                  backgroundColor: `${r.category_color}1f`,
+                                  color: r.category_color,
+                                }
+                              : undefined
+                          }
+                        >
+                          {r.category_icon ? <span>{r.category_icon}</span> : null}
+                          {r.category_name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">{r.location_name}</div>

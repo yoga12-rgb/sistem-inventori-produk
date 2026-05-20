@@ -29,9 +29,47 @@ type StockItem = {
   batches: StockBatchSummary[];
 };
 
+type DisposalCategory =
+  | "expired"
+  | "compliment"
+  | "tester"
+  | "damage"
+  | "adjustment";
+type DisposalItem = {
+  product_id: string;
+  sku: string;
+  name: string;
+  unit: string;
+  quantity: number;
+};
+
 type EodReport = {
   sold: SoldItem[];
+  disposal?: Partial<Record<DisposalCategory, DisposalItem[]>>;
   stock_now: StockItem[];
+};
+
+const DISPOSAL_ORDER: DisposalCategory[] = [
+  "expired",
+  "compliment",
+  "tester",
+  "damage",
+];
+
+const DISPOSAL_LABEL: Record<DisposalCategory, string> = {
+  expired: "Expired",
+  compliment: "Compliment",
+  tester: "Tester",
+  damage: "Rusak",
+  adjustment: "Adjustment",
+};
+
+const DISPOSAL_EMOJI: Record<DisposalCategory, string> = {
+  expired: "❌",
+  compliment: "🎁",
+  tester: "🧪",
+  damage: "🗑️",
+  adjustment: "🔧",
 };
 
 const DATE_FILTER_KEY = "eod-panel:date";
@@ -72,7 +110,7 @@ function buildEodText(
       ? data.sold
           .map(
             (s) =>
-              `${s.name} : ${formatNumber(Number(s.quantity))} ${s.unit}`,
+              `✅ ${s.name} : ${formatNumber(Number(s.quantity))} ${s.unit}`,
           )
           .join("\n")
       : "Tidak ada transaksi.";
@@ -81,7 +119,7 @@ function buildEodText(
     data.stock_now.length > 0
       ? data.stock_now
           .map((s) => {
-            const head = `${s.name} : ${formatNumber(Number(s.total))} ${s.unit}`;
+            const head = `✅ ${s.name} : ${formatNumber(Number(s.total))} ${s.unit}`;
             const sub = s.batches
               .map(
                 (b) =>
@@ -93,7 +131,30 @@ function buildEodText(
           .join("\n")
       : "Stok kosong.";
 
-  return [
+  const disposalEntries = DISPOSAL_ORDER.flatMap<[DisposalCategory, DisposalItem[]]>(
+    (cat) => {
+      const items = data.disposal?.[cat];
+      return items && items.length > 0 ? [[cat, items]] : [];
+    },
+  );
+
+  const disposalLines =
+    disposalEntries.length > 0
+      ? disposalEntries
+          .map(([cat, items]) => {
+            const head = `${DISPOSAL_EMOJI[cat]} ${DISPOSAL_LABEL[cat]}`;
+            const sub = items
+              .map(
+                (i) =>
+                  `  ✅ ${i.name} : ${formatNumber(Number(i.quantity))} ${i.unit}`,
+              )
+              .join("\n");
+            return [head, sub].filter(Boolean).join("\n");
+          })
+          .join("\n")
+      : null;
+
+  const sections = [
     header,
     "",
     "Terjual",
@@ -101,7 +162,11 @@ function buildEodText(
     "",
     "Stock Update",
     stockLines,
-  ].join("\n");
+  ];
+  if (disposalLines) {
+    sections.push("", "Disposal", disposalLines);
+  }
+  return sections.join("\n");
 }
 
 export function EodPanel({
@@ -141,7 +206,10 @@ export function EodPanel({
         p_date: date,
       });
       if (error) setError(error.message);
-      else setReport((data as EodReport) ?? { sold: [], stock_now: [] });
+      else
+        setReport(
+          (data as EodReport) ?? { sold: [], disposal: {}, stock_now: [] },
+        );
       setLoading(false);
     },
     [supabase, outletId, date],
@@ -157,6 +225,14 @@ export function EodPanel({
     if (!report || !outlet) return "";
     return buildEodText(outlet.name, date, report);
   }, [report, outlet, date]);
+
+  const disposalCount = useMemo(() => {
+    if (!report?.disposal) return 0;
+    return DISPOSAL_ORDER.reduce(
+      (sum, cat) => sum + (report.disposal?.[cat]?.length ?? 0),
+      0,
+    );
+  }, [report]);
 
   const waUrl = text ? `https://wa.me/?text=${encodeURIComponent(text)}` : "#";
 
@@ -263,12 +339,57 @@ export function EodPanel({
                       key={s.product_id}
                       className="flex items-center justify-between py-2 text-sm"
                     >
-                      <span>{s.name}</span>
+                      <span>✅ {s.name}</span>
                       <span className="font-medium tabular-nums">
                         {formatNumber(Number(s.quantity))} {s.unit}
                       </span>
                     </li>
                   ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>
+                Disposal{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({disposalCount} produk)
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {disposalCount === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Tidak ada barang yang dibuang.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {DISPOSAL_ORDER.map((cat) => {
+                    const items = report?.disposal?.[cat] ?? [];
+                    if (items.length === 0) return null;
+                    return (
+                      <li key={cat}>
+                        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                          {DISPOSAL_EMOJI[cat]} {DISPOSAL_LABEL[cat]}
+                        </div>
+                        <ul className="mt-1 divide-y">
+                          {items.map((i) => (
+                            <li
+                              key={`${cat}-${i.product_id}`}
+                              className="flex items-center justify-between py-1.5 text-sm"
+                            >
+                              <span>✅ {i.name}</span>
+                              <span className="font-medium tabular-nums">
+                                {formatNumber(Number(i.quantity))} {i.unit}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </CardContent>
@@ -291,7 +412,7 @@ export function EodPanel({
                   {report.stock_now.map((s) => (
                     <li key={s.product_id}>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{s.name}</span>
+                        <span className="font-medium">✅ {s.name}</span>
                         <span className="tabular-nums">
                           {formatNumber(Number(s.total))} {s.unit}
                         </span>

@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import {
   recordStockEntryAction,
-  type StockEntryFormState,
 } from "./actions";
+import type { StockEntryFormState } from "./state";
 
 type Product = { id: string; sku: string; name: string; unit: string };
 type Location = { id: string; code: string; name: string };

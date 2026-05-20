@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,10 +42,6 @@ type LineItem = {
 
 const initialState: CreateTransferState = { ok: false };
 
-function newUid(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
 export function TransferCreateForm({
   allowedFromLocations,
   allLocations,
@@ -61,11 +57,22 @@ export function TransferCreateForm({
     initialState,
   );
 
+  // Stable id prefix + counter (deterministik antara SSR & CSR).
+  // counterRef hanya dibaca dari event handler / effect (tidak boleh saat render).
+  const idPrefix = useId();
+  const counterRef = useRef(1); // 0 dipakai row awal.
+  const nextUid = () => `${idPrefix}-${counterRef.current++}`;
+  const makeEmptyRow = (uid: string = nextUid()): LineItem => ({
+    uid,
+    source_batch_id: "",
+    quantity: "",
+  });
+
   const [fromId, setFromId] = useState<string>(defaultFromId ?? "");
   const [toId, setToId] = useState<string>("");
   const [mode, setMode] = useState<"one_way" | "two_way">("two_way");
-  const [items, setItems] = useState<LineItem[]>([
-    { uid: newUid(), source_batch_id: "", quantity: "" },
+  const [items, setItems] = useState<LineItem[]>(() => [
+    { uid: `${idPrefix}-0`, source_batch_id: "", quantity: "" },
   ]);
 
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -105,7 +112,7 @@ export function TransferCreateForm({
   // Reset items saat asal berubah supaya tidak bawa batch dari outlet lama.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems([{ uid: newUid(), source_batch_id: "", quantity: "" }]);
+    setItems([makeEmptyRow()]);
   }, [fromId]);
 
   const batchById = useMemo(() => {
@@ -114,11 +121,7 @@ export function TransferCreateForm({
     return map;
   }, [batches]);
 
-  const addRow = () =>
-    setItems((prev) => [
-      ...prev,
-      { uid: newUid(), source_batch_id: "", quantity: "" },
-    ]);
+  const addRow = () => setItems((prev) => [...prev, makeEmptyRow()]);
   const removeRow = (uid: string) =>
     setItems((prev) =>
       prev.length > 1 ? prev.filter((i) => i.uid !== uid) : prev,
@@ -276,7 +279,7 @@ export function TransferCreateForm({
               return (
                 <div
                   key={row.uid}
-                  className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end"
+                  className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[1fr_160px_auto] sm:items-start"
                 >
                   <FormField
                     label={`Batch ${idx + 1}`}
@@ -329,6 +332,7 @@ export function TransferCreateForm({
                     onClick={() => removeRow(row.uid)}
                     disabled={items.length === 1}
                     aria-label="Hapus baris"
+                    className="sm:mt-7"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

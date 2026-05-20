@@ -8,7 +8,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const disposalSchema = z.object({
   product_id: z.string().uuid(),
   location_id: z.string().uuid(),
-  movement_type: z.enum(["expired_out", "damage_out", "adjustment_out"]),
+  movement_type: z.enum([
+    "expired_out",
+    "compliment_out",
+    "tester_out",
+    "damage_out",
+  ]),
   quantity: z
     .number({ message: "Harus angka" })
     .int("Harus bilangan bulat")
@@ -43,8 +48,9 @@ export async function recordDisposalAction(
     movement_type:
       ((formData.get("movement_type") as string) ?? "expired_out") as
         | "expired_out"
-        | "damage_out"
-        | "adjustment_out",
+        | "compliment_out"
+        | "tester_out"
+        | "damage_out",
     quantity: num(formData.get("quantity")) ?? Number.NaN,
     batch_id: ((formData.get("batch_id") as string) ?? "").trim() || null,
     notes: ((formData.get("notes") as string) ?? "").trim() || null,
@@ -76,5 +82,7 @@ export async function recordDisposalAction(
 
   revalidatePath("/stok");
   revalidatePath("/eod");
+  revalidatePath("/matrix");
+  revalidatePath("/aktivitas");
   return { ok: true, message: "Stok dibuang." };
 }

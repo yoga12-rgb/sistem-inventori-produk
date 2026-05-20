@@ -1,5 +1,6 @@
 import { KeyRound, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { RegisterPageAction } from "@/components/register-page-action";
 import {
   Table,
   TableBody,
@@ -71,22 +72,12 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Master Data
-          </p>
-          <h1 className="text-2xl font-semibold">Pengguna</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Buat akun login Supabase + profil sekaligus. Kasir wajib ditugaskan
-            ke satu outlet.
-          </p>
-        </div>
+      <RegisterPageAction>
         <UserFormDialog outlets={outlets}>
           <Plus className="h-4 w-4" />
           Tambah Pengguna
         </UserFormDialog>
-      </header>
+      </RegisterPageAction>
 
       {profilesErr ? (
         <p className="text-sm text-destructive">{profilesErr.message}</p>

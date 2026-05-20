@@ -93,11 +93,6 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold sm:text-3xl">
           Halo, {user?.profile?.full_name ?? user?.email ?? "Pengguna"}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {isAdmin
-            ? "Anda Super Admin. Mulai dengan menyiapkan master data, lalu catat produksi."
-            : "Anda Kasir. Lihat stok, lalu lanjut ke transaksi penjualan."}
-        </p>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

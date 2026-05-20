@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { SaleFormState } from "./state";
 
 const saleItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -21,12 +21,6 @@ const saleSchema = z.object({
   notes: z.string().trim().max(500).nullable(),
   items: z.array(saleItemSchema).min(1, "Minimal satu item"),
 });
-
-export type SaleFormState = {
-  ok: boolean;
-  message?: string;
-  fieldErrors?: Partial<Record<keyof z.input<typeof saleSchema>, string>>;
-};
 
 export async function createSaleAction(
   _prev: SaleFormState,
@@ -76,5 +70,5 @@ export async function createSaleAction(
   revalidatePath("/penjualan");
   revalidatePath("/stok");
   revalidatePath("/eod");
-  redirect("/penjualan?ok=1");
+  return { ok: true, message: "Transaksi tercatat." };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,8 @@ import { Select } from "@/components/ui/select";
 import { FormField } from "@/components/ui/form-field";
 import {
   recordProductionBatchAction,
-  type ProductionFormState,
 } from "./actions";
+import type { ProductionFormState } from "./state";
 
 type Product = {
   id: string;
@@ -34,10 +34,6 @@ type LineItem = {
 };
 
 const initialState: ProductionFormState = { ok: false };
-
-function newUid(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -67,18 +63,29 @@ export function ProductionForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [producedAt, setProducedAt] = useState<string>(toLocalInput(new Date()));
-  const [items, setItems] = useState<LineItem[]>(() => [makeEmptyRow()]);
+  // Stable id prefix + counter (deterministik antara SSR & CSR).
+  // counterRef hanya dibaca dari event handler / effect (tidak boleh saat render).
+  const idPrefix = useId();
+  const counterRef = useRef(1); // 0 dipakai row awal.
+  const nextUid = () => `${idPrefix}-${counterRef.current++}`;
+  const makeEmptyRow = (uid: string = nextUid()): LineItem => ({
+    uid,
+    product_id: "",
+    quantity: "",
+    expires_at: "",
+    expires_touched: false,
+  });
 
-  function makeEmptyRow(): LineItem {
-    return {
-      uid: newUid(),
+  const [producedAt, setProducedAt] = useState<string>(toLocalInput(new Date()));
+  const [items, setItems] = useState<LineItem[]>(() => [
+    {
+      uid: `${idPrefix}-0`,
       product_id: "",
       quantity: "",
       expires_at: "",
       expires_touched: false,
-    };
-  }
+    },
+  ]);
 
   // Reset form setelah server action sukses.
   useEffect(() => {
@@ -271,7 +278,7 @@ export function ProductionForm({
             return (
               <div
                 key={row.uid}
-                className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[2fr_120px_1fr_auto] sm:items-end"
+                className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[2fr_120px_1fr_auto] sm:items-start"
               >
                 <FormField
                   label={`Produk ${idx + 1}`}
@@ -338,6 +345,7 @@ export function ProductionForm({
                   onClick={() => removeRow(row.uid)}
                   disabled={items.length === 1}
                   aria-label="Hapus baris"
+                  className="sm:mt-7"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

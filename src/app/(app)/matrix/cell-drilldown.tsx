@@ -24,6 +24,8 @@ export type CellKind =
   | "entered"
   | "expired"
   | "damage"
+  | "compliment"
+  | "tester"
   | "adjustment_in"
   | "adjustment_out";
 
@@ -37,6 +39,8 @@ const KIND_LABEL: Record<CellKind, string> = {
   entered: "Stok masuk (non-perishable)",
   expired: "Expired",
   damage: "Rusak",
+  compliment: "Compliment",
+  tester: "Tester",
   adjustment_in: "Adjustment in",
   adjustment_out: "Adjustment out",
 };
@@ -49,6 +53,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   sale_out: "Penjualan",
   expired_out: "Expired",
   damage_out: "Rusak",
+  compliment_out: "Compliment",
+  tester_out: "Tester",
   adjustment_in: "Adjustment in",
   adjustment_out: "Adjustment out",
 };

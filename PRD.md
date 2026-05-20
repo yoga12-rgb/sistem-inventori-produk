@@ -1,10 +1,10 @@
-ðŸ“„ Product Requirements Document (PRD) - Update 9
+﻿ðŸ“„ Product Requirements Document (PRD) - Update 10
 Sistem Manajemen Inventaris & Penjualan Multi-Outlet Real-time
 
-> Update 9 menyelesaikan iterasi terakhir: toast system, halaman audit
-> aktivitas, banner expired-soon, error/not-found boundary, security
-> headers, dan panduan deploy Vercel + Supabase Cloud. Aplikasi siap
-> production.
+> Update 10 menambahkan disposal categories (compliment, tester), POS
+> redesign, multi-batch split per sale item, kategori produk, dan
+> production history. Termasuk berbagai bug fix (focus trap, toast loop,
+> hydration mismatch).
 
 1. Ringkasan Proyek
 Aplikasi berbasis web untuk manajemen inventaris, produksi, dan transfer stok antar outlet. Dioptimalkan untuk penggunaan tablet oleh kasir dengan responsivitas penuh untuk laptop (Super Admin). Menggunakan arsitektur Single Page Application (SPA) agar navigasi terasa instan.
@@ -133,8 +133,8 @@ memilih kontak/grup tujuan secara manual.
 
 5.8 Inventory Matrix Table (Laporan Harian per Tanggal)
 
-- Meringkas: Stok Awal, Produksi/Masuk, Terjual, Transfer In, Transfer Out,
-  Stok Akhir.
+- Meringkas: Stok Awal, Masuk, Transfer In, Transfer Out, Terjual, Expired,
+  Compliment, Tester, Rusak, Stok Akhir.
 - Filter outlet: **single outlet** atau **semua outlet**. Filter tersimpan di
   `localStorage`.
 - Interaksi UI: Hover untuk lihat detail batch/riwayat transfer; klik untuk
@@ -180,8 +180,12 @@ memilih kontak/grup tujuan secara manual.
 | 9 | Auth | Supabase Auth standar; akun kasir dibuat oleh Super Admin |
 | 10 | Varian | Tiap varian = produk independen, SKU sendiri |
 | 11 | Export laporan | Ditunda (bukan iterasi awal) |
+| 12 | Disposal categories | Expired, Compliment, Tester, Rusak di UI. Adjustment hanya internal (pembatalan transfer) |
+| 13 | Kategori produk | Tabel master terpisah, nullable FK di products, CRUD Super Admin only |
+| 14 | POS layout | Two-column (product grid + sticky cart), mobile bottom sheet |
+| 15 | Multi-batch split | Cart model `splits[]` per item, FIFO preview + manual mode |
 
-9. Status Implementasi (per Update 4)
+9. Status Implementasi (per Update 10)
 
 | Iterasi | Cakupan | Status |
 |---|---|---|
@@ -192,3 +196,4 @@ memilih kontak/grup tujuan secara manual.
 | 4 | Penjualan multi-item + warning expired + EOD WhatsApp | âœ… Selesai |
 | 5 | Inventory Matrix harian per tanggal + filter persisten | âœ… Selesai |
 | 6 | Polishing, audit log, deploy production | âœ… Selesai |
+| 7 | Disposal categories, POS redesign, multi-batch split, kategori produk, production history | âœ… Selesai |
