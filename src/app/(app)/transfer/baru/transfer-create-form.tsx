@@ -14,13 +14,6 @@ import { useMasterData } from "@/components/master-data-provider";
 import { createTransferAction } from "../actions";
 import type { CreateTransferState } from "../state";
 
-type Location = {
-  id: string;
-  code: string;
-  name: string;
-  type: "central_kitchen" | "outlet";
-};
-
 type Batch = {
   id: string;
   product_id: string;

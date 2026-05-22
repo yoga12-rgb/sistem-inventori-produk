@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeftRight, Plus } from "lucide-react";
+import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -47,6 +48,33 @@ type SearchParams = Promise<{
 }>;
 
 const ACTIVE_STATUSES: TransferStatus[] = ["pending", "in_transit"];
+
+// Whitelist nilai untuk searchParams — apapun yang bukan UUID atau bukan
+// status valid akan diabaikan. Ini menutup PostgREST filter injection lewat
+// URL: tanpa validasi, string seperti `xx),special.lt(2025-01-01` bisa
+// dipotong masuk ke `.or(...)`.
+const VALID_STATUSES = new Set<TransferStatus>([
+  "pending",
+  "in_transit",
+  "received",
+  "cancelled",
+  "rejected",
+]);
+
+const uuidSchema = z.string().uuid();
+
+function safeUuid(value: string | undefined): string | null {
+  if (!value || value === "all") return null;
+  const r = uuidSchema.safeParse(value);
+  return r.success ? r.data : null;
+}
+
+function safeStatus(value: string | undefined): TransferStatus | null {
+  if (!value || value === "all") return null;
+  return VALID_STATUSES.has(value as TransferStatus)
+    ? (value as TransferStatus)
+    : null;
+}
 
 export default async function TransferListPage({
   searchParams,
@@ -109,13 +137,16 @@ export default async function TransferListPage({
 
   // Filter sekunder via TransferListFilters (status & outlet) — hanya
   // berlaku pada tab "all" agar tidak konflik dengan filter tab utama.
+  // sp.* divalidasi (UUID & enum) untuk mencegah PostgREST filter injection.
   if (box === "all") {
-    if (sp.status && sp.status !== "all") {
-      query = query.eq("status", sp.status);
+    const safeStatusFilter = safeStatus(sp.status);
+    if (safeStatusFilter) {
+      query = query.eq("status", safeStatusFilter);
     }
-    if (sp.outlet && sp.outlet !== "all") {
+    const safeOutletFilter = safeUuid(sp.outlet);
+    if (safeOutletFilter) {
       query = query.or(
-        `from_location_id.eq.${sp.outlet},to_location_id.eq.${sp.outlet}`,
+        `from_location_id.eq.${safeOutletFilter},to_location_id.eq.${safeOutletFilter}`,
       );
     }
   }

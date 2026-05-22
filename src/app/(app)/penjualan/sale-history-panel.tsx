@@ -174,7 +174,6 @@ export function SaleHistoryPanel({
     if (usingInitial && date === today) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchByDate(date);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUsingInitial(false);
   }, [active, date, today, usingInitial, fetchByDate]);
 
@@ -185,7 +184,6 @@ export function SaleHistoryPanel({
     if (refreshKey === 0) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchByDate(date);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUsingInitial(false);
     // Sengaja tidak depend `date` di sini — fetch tetap pakai date saat ini,
     // dan effect lain di atas yang handle perubahan date.

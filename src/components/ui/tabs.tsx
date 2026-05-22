@@ -111,6 +111,10 @@ export function TabsTrigger({
  * Lazy mount: panel hanya di-render ketika tab pertama kali aktif. Setelah
  * itu, panel tetap di-mount tapi disembunyikan via `hidden` agar state
  * (filter, scroll) terjaga tanpa unmount/remount.
+ *
+ * `everActive` di-track via state (bukan ref) supaya tidak bocor lewat
+ * render — React 19 strict mode bisa double-render dan mutate-ref-saat-render
+ * memunculkan inkonsistensi.
  */
 export function TabsContent({
   value,
@@ -123,9 +127,14 @@ export function TabsContent({
 }) {
   const { value: current, baseId } = useTabs();
   const active = current === value;
-  const everActiveRef = React.useRef(active);
-  if (active) everActiveRef.current = true;
-  const everActive = everActiveRef.current;
+  const [everActive, setEverActive] = React.useState(active);
+
+  React.useEffect(() => {
+    if (active && !everActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEverActive(true);
+    }
+  }, [active, everActive]);
 
   return (
     <div

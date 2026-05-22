@@ -149,7 +149,6 @@ function ConfirmButton({
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQtys(initialQtys);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReasons(initialReasons);
   }, [open, items]);
 

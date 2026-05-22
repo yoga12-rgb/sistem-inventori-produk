@@ -21,13 +21,6 @@ import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
 import { DisposalDialog } from "./disposal-dialog";
 
-type Location = {
-  id: string;
-  code: string;
-  name: string;
-  type: "central_kitchen" | "outlet";
-};
-
 type StockRow = {
   product_id: string;
   sku: string;
@@ -56,24 +49,7 @@ type BatchRow = {
   notes: string | null;
 };
 
-type Product = {
-  id: string;
-  sku: string;
-  name: string;
-  unit: string;
-  is_perishable: boolean;
-  expiry_warning_hours: number;
-  expiry_discount_percent: number;
-};
-
 const FILTER_KEY = "stock-board:filters";
-
-type CategoryOption = {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-};
 
 type FilterState = { locationId: string | "all" };
 
