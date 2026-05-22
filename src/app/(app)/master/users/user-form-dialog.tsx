@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
+import { useMasterData } from "@/components/master-data-provider";
 import {
   createUserAction,
   resetUserPasswordAction,
@@ -24,23 +25,22 @@ type UserRow = {
   email: string | null;
 };
 
-type OutletOption = { id: string; code: string; name: string };
-
 const initialState: UserFormState = { ok: false };
 
 export function UserFormDialog({
   user,
-  outlets,
   variant,
   size,
   children,
 }: {
   user?: UserRow;
-  outlets: OutletOption[];
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   children: React.ReactNode;
 }) {
+  // Outlet daftar dari master data provider — yang aktif saja.
+  const { locations } = useMasterData();
+  const outlets = locations.filter((l) => l.type === "outlet");
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<UserRow["role"]>(user?.role ?? "cashier");
   const [state, action, pending] = useActionState(

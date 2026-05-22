@@ -2,32 +2,16 @@ import { Package } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StockBoard } from "./stock-board";
 import { requireUser } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMasterData } from "@/lib/master-data";
 
 export const metadata = { title: "Stok — Sistem Inventaris" };
 
 export default async function StokPage() {
   const me = await requireUser();
 
-  const supabase = await createSupabaseServerClient();
-
-  const [{ data: locsData }, { data: catData }] = await Promise.all([
-    supabase
-      .from("locations")
-      .select("id, code, name, type")
-      .eq("is_active", true)
-      .order("type", { ascending: true })
-      .order("code", { ascending: true }),
-    supabase
-      .from("product_categories")
-      .select("id, name, icon, color")
-      .eq("is_active", true)
-      .order("sort", { ascending: true })
-      .order("name", { ascending: true }),
-  ]);
-
-  const locations = locsData ?? [];
-  const categories = catData ?? [];
+  // Master data di-cache di layout — di sini kita hanya ambil locations
+  // untuk gating empty state & default selection.
+  const { locations } = await getMasterData();
 
   if (locations.length === 0) {
     return (
@@ -45,11 +29,7 @@ export default async function StokPage() {
 
   return (
     <div className="space-y-6">
-      <StockBoard
-        locations={locations}
-        categories={categories}
-        defaultLocationId={defaultLocationId}
-      />
+      <StockBoard defaultLocationId={defaultLocationId} />
     </div>
   );
 }

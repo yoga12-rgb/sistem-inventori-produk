@@ -2,9 +2,10 @@ import Link from "next/link";
 import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RegisterPageAction } from "@/components/register-page-action";
-import { PosBoard, type PosProduct } from "./pos-board";
+import { PosBoard } from "./pos-board";
 import type { SaleHistoryRow } from "./sale-history-sheet";
 import { requireUser } from "@/lib/auth";
+import { getMasterData } from "@/lib/master-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Penjualan — Sistem Inventaris" };
@@ -12,48 +13,14 @@ export const metadata = { title: "Penjualan — Sistem Inventaris" };
 export default async function PenjualanPage() {
   const me = await requireUser();
   const isAdmin = me.profile?.role === "super_admin";
-
-  const supabase = await createSupabaseServerClient();
-  const [{ data: locsData }, { data: productsData }, { data: categoriesData }] =
-    await Promise.all([
-      supabase
-        .from("locations")
-        .select("id, code, name, type")
-        .eq("is_active", true)
-        .order("code", { ascending: true }),
-      supabase
-        .from("products")
-        .select(
-          `
-            id, sku, name, unit, category_id,
-            is_perishable, expiry_warning_hours, expiry_discount_percent,
-            category:product_categories(id, name, icon, color)
-          `,
-        )
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-      supabase
-        .from("product_categories")
-        .select("id, code, name, icon, color, sort")
-        .eq("is_active", true)
-        .order("sort", { ascending: true })
-        .order("name", { ascending: true }),
-    ]);
-
-  const locations = locsData ?? [];
-  const categories = categoriesData ?? [];
-
-  // Supabase PostgREST mengembalikan join FK sebagai array. Karena
-  // products.category_id adalah FK tunggal, kita flatten ke object | null.
-  const products = ((productsData ?? []) as unknown as Array<Record<string, unknown>>).map(
-    (p) => ({
-      ...p,
-      category: Array.isArray(p.category)
-        ? (p.category[0] as PosProduct["category"]) ?? null
-        : (p.category as PosProduct["category"]) ?? null,
-    }),
-  ) as unknown as PosProduct[];
   const myOutletId = me.profile?.outlet_id ?? null;
+
+  // Master data dipanggil oleh `(app)/layout.tsx` dan disebar via
+  // MasterDataProvider — namun kita tetap perlu daftar outlet yang ALLOWED
+  // untuk user ini di sini (server) supaya bisa render EmptyState yang tepat.
+  // Pemanggilan `getMasterData()` ke layout & page sama-sama di RSC, di-dedupe
+  // oleh React cache otomatis dalam 1 request.
+  const { locations } = await getMasterData();
 
   // Outlet yang boleh dipilih sebagai lokasi penjualan.
   const allowedOutlets = isAdmin
@@ -62,6 +29,7 @@ export default async function PenjualanPage() {
 
   // Riwayat hari ini (Asia/Jakarta) — cache awal untuk sheet kanan supaya
   // buka pertama kali instan; sheet sendiri punya filter tanggal sendiri.
+  const supabase = await createSupabaseServerClient();
   const startOfTodayJakarta = (() => {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -120,9 +88,7 @@ export default async function PenjualanPage() {
       </RegisterPageAction>
 
       <PosBoard
-        outlets={allowedOutlets}
-        products={products}
-        categories={categories}
+        allowedOutletIds={allowedOutlets.map((o) => o.id)}
         defaultOutletId={defaultOutletId}
         history={sales}
       />

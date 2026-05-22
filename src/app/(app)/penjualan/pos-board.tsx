@@ -26,6 +26,12 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { useMasterData } from "@/components/master-data-provider";
+import type {
+  MasterCategory,
+  MasterLocation,
+  MasterProduct,
+} from "@/lib/master-data";
 import { formatDate, formatNumber, hoursBetween } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -40,33 +46,13 @@ import {
   type SaleHistoryRow,
 } from "./sale-history-sheet";
 
-export type PosProduct = {
-  id: string;
-  sku: string;
-  name: string;
-  unit: string;
-  is_perishable: boolean;
-  expiry_warning_hours: number;
-  expiry_discount_percent: number;
-  category_id: string | null;
-  category: {
-    id: string;
-    name: string;
-    icon: string | null;
-    color: string | null;
-  } | null;
-};
-
-export type PosOutlet = { id: string; code: string; name: string };
-
-export type PosCategory = {
-  id: string;
-  code: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  sort: number;
-};
+/**
+ * Tipe-tipe ini di-alias dari master data agar kode lama yang import
+ * `PosProduct` / `PosOutlet` / `PosCategory` tidak perlu diubah.
+ */
+export type PosProduct = MasterProduct;
+export type PosOutlet = MasterLocation;
+export type PosCategory = MasterCategory;
 
 type Batch = {
   id: string;
@@ -139,18 +125,29 @@ function writePersistedFilters(filters: PersistedFilters): void {
 }
 
 export function PosBoard({
-  outlets,
-  products,
-  categories,
+  allowedOutletIds,
   defaultOutletId,
   history,
 }: {
-  outlets: PosOutlet[];
-  products: PosProduct[];
-  categories: PosCategory[];
+  allowedOutletIds: string[];
   defaultOutletId: string;
   history: SaleHistoryRow[];
 }) {
+  // Master data dari provider (di-fetch sekali di layout, tidak hit DB
+  // setiap navigasi). `outlets` di sini = subset locations type='outlet'
+  // yang memang allowed untuk user ini.
+  const master = useMasterData();
+  const allowedSet = useMemo(
+    () => new Set(allowedOutletIds),
+    [allowedOutletIds],
+  );
+  const outlets = useMemo(
+    () => master.locations.filter((l) => allowedSet.has(l.id)),
+    [master.locations, allowedSet],
+  );
+  const products = master.products;
+  const categories = master.categories;
+
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const toast = useToast();
 
@@ -170,13 +167,13 @@ export function PosBoard({
   const [categoryFilter, setCategoryFilterState] = useState<string>("all");
 
   // Restore saved filter values dari localStorage sekali saat mount.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const saved = readPersistedFilters();
     if (
       saved.outletId &&
       outlets.some((o) => o.id === saved.outletId)
     ) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOutletIdState(saved.outletId);
     }
     const validTabs: FilterTab[] = [
@@ -186,11 +183,9 @@ export function PosBoard({
       "expiring",
     ];
     if (saved.tab && validTabs.includes(saved.tab)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTabState(saved.tab);
     }
     if (typeof saved.showOutOfStock === "boolean") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowOutOfStockState(saved.showOutOfStock);
     }
     if (typeof saved.categoryFilter === "string") {
@@ -199,7 +194,6 @@ export function PosBoard({
         saved.categoryFilter === "none" ||
         categories.some((c) => c.id === saved.categoryFilter)
       ) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCategoryFilterState(saved.categoryFilter);
       }
     }

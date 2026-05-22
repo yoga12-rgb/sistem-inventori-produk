@@ -86,6 +86,7 @@ export async function saveOutletAction(
 
   revalidatePath("/master/outlets");
   revalidatePath("/");
+  revalidatePath("/", "layout");
   return { ok: true, message: data.id ? "Outlet diperbarui." : "Outlet dibuat." };
 }
 
@@ -106,6 +107,7 @@ export async function toggleOutletActiveAction(
 
   if (error) return errorToState(error.message);
   revalidatePath("/master/outlets");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

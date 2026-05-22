@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { formatDate, formatDateTime, formatNumber, hoursBetween } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
 import { DisposalDialog } from "./disposal-dialog";
 
@@ -90,21 +91,21 @@ function readSavedFilter(): FilterState | null {
 }
 
 export function StockBoard({
-  locations,
-  categories,
   defaultLocationId,
 }: {
-  locations: Location[];
-  categories: CategoryOption[];
   defaultLocationId: string | null;
 }) {
+  // Master data dari layout provider — tidak fetch ulang per navigasi.
+  const master = useMasterData();
+  const locations = master.locations;
+  const categories = master.categories;
+
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [locationId, setLocationId] = useState<string | "all">(
     () => readSavedFilter()?.locationId ?? defaultLocationId ?? "all",
   );
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [rows, setRows] = useState<StockRow[]>([]);
-  const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,22 +136,6 @@ export function StockBoard({
       return;
     }
     setRows((data ?? []) as StockRow[]);
-
-    // Pre-fetch product threshold/discount agar warning expired bisa hidup.
-    const ids = Array.from(new Set((data ?? []).map((r) => r.product_id)));
-    if (ids.length > 0) {
-      const { data: products } = await supabase
-        .from("products")
-        .select(
-          "id, sku, name, unit, is_perishable, expiry_warning_hours, expiry_discount_percent",
-        )
-        .in("id", ids);
-      const map: Record<string, Product> = {};
-      for (const p of products ?? []) map[p.id] = p as Product;
-      setProductsById(map);
-    } else {
-      setProductsById({});
-    }
     setLoading(false);
   }, [supabase, locationId]);
 
@@ -304,7 +289,7 @@ export function StockBoard({
               </TableRow>
             ) : (
               filteredRows.map((r) => {
-                const product = productsById[r.product_id];
+                const product = master.productById.get(r.product_id);
                 const warningHours = product?.expiry_warning_hours ?? 24;
                 const isWarning =
                   r.is_perishable &&

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Select } from "@/components/ui/select";
+import { useMasterData } from "@/components/master-data-provider";
 import { transferStatusLabel, type TransferStatus } from "@/lib/transfer";
 
 const STATUSES: TransferStatus[] = [
@@ -33,12 +34,11 @@ function readSaved(): SavedFilters | null {
 }
 
 export function TransferListFilters({
-  locations,
   defaultOutletId,
 }: {
-  locations: { id: string; code: string; name: string }[];
   defaultOutletId: string | null;
 }) {
+  const { locations } = useMasterData();
   const router = useRouter();
   const searchParams = useSearchParams();
   const status = searchParams.get("status") ?? "all";

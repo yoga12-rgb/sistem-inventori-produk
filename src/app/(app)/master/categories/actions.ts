@@ -105,6 +105,7 @@ export async function saveCategoryAction(
   revalidatePath("/master/products");
   revalidatePath("/penjualan");
   revalidatePath("/stok");
+  revalidatePath("/", "layout");
   return { ok: true, message: data.id ? "Kategori diperbarui." : "Kategori dibuat." };
 }
 
@@ -123,5 +124,6 @@ export async function toggleCategoryActiveAction(
   revalidatePath("/master/products");
   revalidatePath("/penjualan");
   revalidatePath("/stok");
+  revalidatePath("/", "layout");
   return { ok: true };
 }

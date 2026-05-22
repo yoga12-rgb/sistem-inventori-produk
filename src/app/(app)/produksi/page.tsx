@@ -3,30 +3,16 @@ import { Building2, Package } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProduksiTabs } from "./produksi-tabs";
 import { requireSuperAdmin } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMasterData } from "@/lib/master-data";
 
 export const metadata = { title: "Produksi — Sistem Inventaris" };
 
 export default async function ProduksiPage() {
   await requireSuperAdmin();
 
-  const supabase = await createSupabaseServerClient();
-  const [{ data: locsData }, { data: productsData }] = await Promise.all([
-    supabase
-      .from("locations")
-      .select("id, code, name, type")
-      .eq("is_active", true)
-      .order("code", { ascending: true }),
-    supabase
-      .from("products")
-      .select("id, sku, name, unit, is_perishable, default_shelf_life_hours")
-      .eq("is_active", true)
-      .order("name", { ascending: true }),
-  ]);
-
-  const locations = locsData ?? [];
-  const products = productsData ?? [];
-
+  // Master di-cache di layout. Di sini hanya untuk gating empty state —
+  // ProduksiTabs sendiri membaca master via provider.
+  const { locations, products } = await getMasterData();
   const centralKitchens = locations.filter((l) => l.type === "central_kitchen");
 
   if (centralKitchens.length === 0 || products.length === 0) {
@@ -63,11 +49,7 @@ export default async function ProduksiPage() {
 
   return (
     <div className="space-y-6">
-      <ProduksiTabs
-        products={products}
-        centralKitchens={centralKitchens}
-        locations={locations}
-      />
+      <ProduksiTabs />
     </div>
   );
 }

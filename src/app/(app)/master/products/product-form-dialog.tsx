@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
+import { useMasterData } from "@/components/master-data-provider";
 import { saveProductAction, type ProductFormState } from "./actions";
 
 type Product = {
@@ -23,27 +24,21 @@ type Product = {
   is_active: boolean;
 };
 
-type Category = {
-  id: string;
-  name: string;
-  is_active: boolean;
-};
-
 const initialState: ProductFormState = { ok: false };
 
 export function ProductFormDialog({
   product,
-  categories,
   variant,
   size,
   children,
 }: {
   product?: Product;
-  categories: Category[];
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   children: React.ReactNode;
 }) {
+  // Kategori dari master data provider (hanya yang is_active=true).
+  const { categories } = useMasterData();
   const [open, setOpen] = useState(false);
   const [perishable, setPerishable] = useState<boolean>(
     product?.is_perishable ?? true,

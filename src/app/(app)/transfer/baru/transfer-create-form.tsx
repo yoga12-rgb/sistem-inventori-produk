@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, formatNumber } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useMasterData } from "@/components/master-data-provider";
 import { createTransferAction } from "../actions";
 import type { CreateTransferState } from "../state";
 
@@ -43,14 +44,19 @@ type LineItem = {
 const initialState: CreateTransferState = { ok: false };
 
 export function TransferCreateForm({
-  allowedFromLocations,
-  allLocations,
+  allowedFromIds,
   defaultFromId,
 }: {
-  allowedFromLocations: Location[];
-  allLocations: Location[];
+  allowedFromIds: string[];
   defaultFromId: string | null;
 }) {
+  const master = useMasterData();
+  const allowedSet = useMemo(() => new Set(allowedFromIds), [allowedFromIds]);
+  const allowedFromLocations = useMemo(
+    () => master.locations.filter((l) => allowedSet.has(l.id)),
+    [master.locations, allowedSet],
+  );
+  const allLocations = master.locations;
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [state, action, pending] = useActionState(
     createTransferAction,

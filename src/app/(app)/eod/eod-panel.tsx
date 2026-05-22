@@ -7,9 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { formatNumber } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
-
-type Outlet = { id: string; code: string; name: string };
 
 type SoldItem = {
   product_id: string;
@@ -170,12 +169,25 @@ function buildEodText(
 }
 
 export function EodPanel({
-  outlets,
+  allowedOutletIds,
   defaultOutletId,
 }: {
-  outlets: Outlet[];
+  allowedOutletIds: string[];
   defaultOutletId: string;
 }) {
+  const master = useMasterData();
+  const allowedSet = useMemo(
+    () => new Set(allowedOutletIds),
+    [allowedOutletIds],
+  );
+  const outlets = useMemo(
+    () =>
+      master.locations.filter(
+        (l) => l.type === "outlet" && allowedSet.has(l.id),
+      ),
+    [master.locations, allowedSet],
+  );
+
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [outletId, setOutletId] = useState<string>(defaultOutletId);

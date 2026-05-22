@@ -2,22 +2,13 @@ import { Grid3x3 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MatrixBoard } from "./matrix-board";
 import { requireUser } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMasterData } from "@/lib/master-data";
 
 export const metadata = { title: "Inventory Matrix — Sistem Inventaris" };
 
 export default async function MatrixPage() {
   const me = await requireUser();
-
-  const supabase = await createSupabaseServerClient();
-  const { data: locsData } = await supabase
-    .from("locations")
-    .select("id, code, name, type")
-    .eq("is_active", true)
-    .order("type", { ascending: true })
-    .order("code", { ascending: true });
-
-  const locations = locsData ?? [];
+  const { locations } = await getMasterData();
 
   if (locations.length === 0) {
     return (
@@ -34,10 +25,7 @@ export default async function MatrixPage() {
 
   return (
     <div className="space-y-6">
-      <MatrixBoard
-        locations={locations}
-        defaultLocationId={defaultLocationId}
-      />
+      <MatrixBoard defaultLocationId={defaultLocationId} />
     </div>
   );
 }

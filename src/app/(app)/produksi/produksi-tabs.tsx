@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { History, Package, Sparkles } from "lucide-react";
 import {
   Tabs,
@@ -8,38 +8,23 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { useMasterData } from "@/components/master-data-provider";
 import { ProductionForm } from "./production-form";
 import { ProductionHistory } from "./production-history";
 import { StockEntryForm } from "./stock-entry-form";
 
-type Product = {
-  id: string;
-  sku: string;
-  name: string;
-  unit: string;
-  is_perishable: boolean;
-  default_shelf_life_hours: number | null;
-};
-
-type Location = {
-  id: string;
-  code: string;
-  name: string;
-  type?: "central_kitchen" | "outlet";
-};
-
 const TAB_KEY = "produksi-tab";
 type TabKey = "produksi" | "stok-masuk" | "riwayat";
 
-export function ProduksiTabs({
-  products,
-  centralKitchens,
-  locations,
-}: {
-  products: Product[];
-  centralKitchens: Location[];
-  locations: Location[];
-}) {
+export function ProduksiTabs() {
+  const master = useMasterData();
+  const products = master.products;
+  const locations = master.locations;
+  const centralKitchens = useMemo(
+    () => locations.filter((l) => l.type === "central_kitchen"),
+    [locations],
+  );
+
   const [tab, setTab] = useState<TabKey>("produksi");
 
   // Restore tab dari localStorage (sekali saat mount).
@@ -62,7 +47,13 @@ export function ProduksiTabs({
     window.localStorage.setItem(TAB_KEY, tab);
   }, [tab]);
 
-  const nonPerishableProducts = products.filter((p) => !p.is_perishable);
+  const nonPerishableProducts = useMemo(
+    () => products.filter((p) => !p.is_perishable),
+    [products],
+  );
+
+  // Page server component sudah gating ini, tapi kita tetap defensif.
+  if (centralKitchens.length === 0) return null;
 
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>

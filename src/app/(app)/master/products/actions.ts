@@ -126,6 +126,8 @@ export async function saveProductAction(
   revalidatePath("/penjualan");
   revalidatePath("/stok");
   revalidatePath("/");
+  // Invalidate layout segment supaya MasterDataProvider menerima data segar.
+  revalidatePath("/", "layout");
   return { ok: true, message: data.id ? "Produk diperbarui." : "Produk dibuat." };
 }
 
@@ -145,6 +147,7 @@ export async function toggleProductActiveAction(
     .eq("id", id);
   if (error) return errorToState(error.message);
   revalidatePath("/master/products");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

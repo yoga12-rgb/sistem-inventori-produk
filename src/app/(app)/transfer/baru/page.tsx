@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TransferCreateForm } from "./transfer-create-form";
 import { requireUser } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMasterData } from "@/lib/master-data";
 
 export const metadata = { title: "Buat Transfer — Sistem Inventaris" };
 
@@ -11,17 +11,12 @@ export default async function NewTransferPage() {
   const me = await requireUser();
   const isAdmin = me.profile?.role === "super_admin";
 
-  const supabase = await createSupabaseServerClient();
-  const { data: locations } = await supabase
-    .from("locations")
-    .select("id, code, name, type")
-    .eq("is_active", true)
-    .order("code", { ascending: true });
-
-  // Asal yang diperbolehkan: kasir cuma outletnya, admin bebas.
+  // Master di-cache di layout. Page menentukan ID asal yang ALLOWED dan
+  // default — TransferCreateForm membaca daftar lokasi dari provider.
+  const { locations } = await getMasterData();
   const allowedFrom = isAdmin
-    ? (locations ?? [])
-    : (locations ?? []).filter((l) => l.id === me.profile?.outlet_id);
+    ? locations
+    : locations.filter((l) => l.id === me.profile?.outlet_id);
 
   return (
     <div className="space-y-6">
@@ -41,8 +36,7 @@ export default async function NewTransferPage() {
         </CardHeader>
         <CardContent>
           <TransferCreateForm
-            allowedFromLocations={allowedFrom}
-            allLocations={locations ?? []}
+            allowedFromIds={allowedFrom.map((l) => l.id)}
             defaultFromId={
               allowedFrom.find((l) => l.id === me.profile?.outlet_id)?.id ??
               allowedFrom[0]?.id ??

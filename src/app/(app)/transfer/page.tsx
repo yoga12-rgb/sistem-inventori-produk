@@ -51,12 +51,7 @@ export default async function TransferListPage({
 
   const supabase = await createSupabaseServerClient();
 
-  // Lokasi untuk filter
-  const { data: locations } = await supabase
-    .from("locations")
-    .select("id, code, name")
-    .eq("is_active", true)
-    .order("code", { ascending: true });
+  // Lokasi untuk filter — diambil dari master data provider (cached layout).
 
   let query = supabase
     .from("transfers")
@@ -99,10 +94,7 @@ export default async function TransferListPage({
         </Link>
       </RegisterPageAction>
 
-      <TransferListFilters
-        locations={locations ?? []}
-        defaultOutletId={myOutlet}
-      />
+      <TransferListFilters defaultOutletId={myOutlet} />
 
       {error ? (
         <p className="text-sm text-destructive">{error.message}</p>

@@ -3,7 +3,7 @@ import { ArrowLeft, Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EodPanel } from "./eod-panel";
 import { requireUser } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMasterData } from "@/lib/master-data";
 
 export const metadata = { title: "End of Day — Sistem Inventaris" };
 
@@ -11,14 +11,11 @@ export default async function EodPage() {
   const me = await requireUser();
   const isAdmin = me.profile?.role === "super_admin";
 
-  const supabase = await createSupabaseServerClient();
-  const { data: locsData } = await supabase
-    .from("locations")
-    .select("id, code, name, type")
-    .eq("is_active", true)
-    .order("code", { ascending: true });
-
-  const outlets = (locsData ?? []).filter((l) => l.type === "outlet");
+  // Master di-cache di layout. Page di sini hanya menentukan ID outlet yang
+  // ALLOWED untuk user (cashier hanya outletnya, admin semua) — EodPanel
+  // membaca daftar outlet langsung dari provider.
+  const { locations } = await getMasterData();
+  const outlets = locations.filter((l) => l.type === "outlet");
   const myOutletId = me.profile?.outlet_id ?? null;
 
   const allowedOutlets = isAdmin
@@ -54,7 +51,7 @@ export default async function EodPage() {
       </div>
 
       <EodPanel
-        outlets={allowedOutlets}
+        allowedOutletIds={allowedOutlets.map((o) => o.id)}
         defaultOutletId={defaultOutletId}
       />
     </div>

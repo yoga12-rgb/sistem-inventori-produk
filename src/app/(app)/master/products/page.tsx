@@ -16,14 +16,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Produk — Sistem Inventaris" };
 
-type Category = {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  is_active: boolean;
-};
-
 type Product = {
   id: string;
   sku: string;
@@ -41,26 +33,21 @@ type Product = {
 export default async function ProductsPage() {
   await requireSuperAdmin();
 
+  // Master products di provider hanya yang is_active=true. Halaman master
+  // ini perlu daftar lengkap (termasuk inactive) supaya admin bisa aktifkan
+  // ulang — jadi tetap fetch sendiri di sini.
   const supabase = await createSupabaseServerClient();
-  const [{ data: prodData, error }, { data: catData }] = await Promise.all([
-    supabase
-      .from("products")
-      .select(
-        `
-          id, sku, name, unit, category_id,
-          is_perishable, default_shelf_life_hours,
-          expiry_warning_hours, expiry_discount_percent, is_active,
-          category:product_categories(id, name, icon, color)
-        `,
-      )
-      .order("name", { ascending: true }),
-    supabase
-      .from("product_categories")
-      .select("id, name, icon, color, is_active")
-      .eq("is_active", true)
-      .order("sort", { ascending: true })
-      .order("name", { ascending: true }),
-  ]);
+  const { data: prodData, error } = await supabase
+    .from("products")
+    .select(
+      `
+        id, sku, name, unit, category_id,
+        is_perishable, default_shelf_life_hours,
+        expiry_warning_hours, expiry_discount_percent, is_active,
+        category:product_categories(id, name, icon, color)
+      `,
+    )
+    .order("name", { ascending: true });
 
   const products = ((prodData ?? []) as unknown as Product[]).map((p) => ({
     ...p,
@@ -68,12 +55,11 @@ export default async function ProductsPage() {
       ? (p.category as unknown[])[0] as Product["category"] ?? null
       : p.category ?? null,
   }));
-  const categories = ((catData ?? []) as Category[]) ?? [];
 
   return (
     <div className="space-y-6">
       <RegisterPageAction>
-        <ProductFormDialog categories={categories}>
+        <ProductFormDialog>
           <Plus className="h-4 w-4" />
           Tambah Produk
         </ProductFormDialog>
@@ -165,7 +151,6 @@ export default async function ProductsPage() {
                     <div className="inline-flex items-center gap-2">
                       <ProductFormDialog
                         product={p}
-                        categories={categories}
                         variant="outline"
                         size="sm"
                       >

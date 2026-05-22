@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { formatNumber } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
 import { CellDrilldown, type CellKind } from "./cell-drilldown";
 
@@ -110,12 +111,12 @@ function cycleLocation(
 }
 
 export function MatrixBoard({
-  locations,
   defaultLocationId,
 }: {
-  locations: Location[];
   defaultLocationId: string | null;
 }) {
+  // Locations dari provider — tidak fetch ulang per navigasi.
+  const { locations } = useMasterData();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [date, setDate] = useState<string>(todayLocalIso());

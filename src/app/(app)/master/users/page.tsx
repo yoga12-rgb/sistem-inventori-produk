@@ -34,20 +34,15 @@ export default async function UsersPage() {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
 
-  // Profiles + outlet (RLS allow super admin select all).
+  // Profiles + outlet (RLS allow super admin select all). Outlet master
+  // tidak perlu di-fetch lagi di sini — UserFormDialog mengambil dari
+  // MasterDataProvider.
   const { data: profilesData, error: profilesErr } = await supabase
     .from("profiles")
     .select(
       "id, full_name, role, outlet_id, is_active, outlet:locations(id, code, name)",
     )
     .order("full_name", { ascending: true });
-
-  // Outlet aktif untuk dropdown.
-  const { data: outletsData } = await supabase
-    .from("locations")
-    .select("id, code, name")
-    .eq("is_active", true)
-    .order("code", { ascending: true });
 
   // Email dari Auth (service role karena email tidak ada di profiles).
   // Jika service role belum diset, kita tetap render dengan email = null.
@@ -68,12 +63,11 @@ export default async function UsersPage() {
     ...p,
     email: emailMap.get(p.id) ?? null,
   }));
-  const outlets = outletsData ?? [];
 
   return (
     <div className="space-y-6">
       <RegisterPageAction>
-        <UserFormDialog outlets={outlets}>
+        <UserFormDialog>
           <Plus className="h-4 w-4" />
           Tambah Pengguna
         </UserFormDialog>
@@ -143,7 +137,6 @@ export default async function UsersPage() {
                           is_active: p.is_active,
                           email: p.email,
                         }}
-                        outlets={outlets}
                         variant="outline"
                         size="sm"
                       >
