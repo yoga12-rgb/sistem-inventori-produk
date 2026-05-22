@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TransferListFilters } from "./list-filters";
+import { TransferBoxTabs, type BoxKey } from "./box-tabs";
 import { RegisterPageAction } from "@/components/register-page-action";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -39,7 +40,13 @@ type Row = {
   items: { quantity: number }[];
 };
 
-type SearchParams = Promise<{ status?: string; outlet?: string }>;
+type SearchParams = Promise<{
+  status?: string;
+  outlet?: string;
+  box?: string;
+}>;
+
+const ACTIVE_STATUSES: TransferStatus[] = ["pending", "in_transit"];
 
 export default async function TransferListPage({
   searchParams,
@@ -48,10 +55,21 @@ export default async function TransferListPage({
 }) {
   const me = await requireUser();
   const sp = await searchParams;
+  const myOutlet = me.profile?.outlet_id ?? null;
+  const isAdmin = me.profile?.role === "super_admin";
+
+  // Default tab: kasir → "incoming"; admin → "all".
+  const box: BoxKey =
+    sp.box === "incoming" ||
+    sp.box === "outgoing" ||
+    sp.box === "history" ||
+    sp.box === "all"
+      ? sp.box
+      : isAdmin
+        ? "all"
+        : "incoming";
 
   const supabase = await createSupabaseServerClient();
-
-  // Lokasi untuk filter — diambil dari master data provider (cached layout).
 
   let query = supabase
     .from("transfers")
@@ -67,20 +85,43 @@ export default async function TransferListPage({
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (sp.status && sp.status !== "all") {
-    query = query.eq("status", sp.status);
+  // Filter berdasarkan tab.
+  if (box === "incoming" && myOutlet) {
+    query = query.eq("to_location_id", myOutlet).in("status", ACTIVE_STATUSES);
+  } else if (box === "outgoing" && myOutlet) {
+    query = query
+      .eq("from_location_id", myOutlet)
+      .in("status", ACTIVE_STATUSES);
+  } else if (box === "history") {
+    query = query.in("status", ["received", "rejected", "cancelled"]);
+    if (myOutlet && !isAdmin) {
+      query = query.or(
+        `from_location_id.eq.${myOutlet},to_location_id.eq.${myOutlet}`,
+      );
+    }
+  } else if (box === "all") {
+    if (myOutlet && !isAdmin) {
+      query = query.or(
+        `from_location_id.eq.${myOutlet},to_location_id.eq.${myOutlet}`,
+      );
+    }
   }
-  if (sp.outlet && sp.outlet !== "all") {
-    // Tampilkan transfer yang melibatkan outlet terpilih (asal atau tujuan)
-    query = query.or(
-      `from_location_id.eq.${sp.outlet},to_location_id.eq.${sp.outlet}`,
-    );
+
+  // Filter sekunder via TransferListFilters (status & outlet) — hanya
+  // berlaku pada tab "all" agar tidak konflik dengan filter tab utama.
+  if (box === "all") {
+    if (sp.status && sp.status !== "all") {
+      query = query.eq("status", sp.status);
+    }
+    if (sp.outlet && sp.outlet !== "all") {
+      query = query.or(
+        `from_location_id.eq.${sp.outlet},to_location_id.eq.${sp.outlet}`,
+      );
+    }
   }
 
   const { data, error } = await query;
   const rows = ((data ?? []) as unknown as Row[]) ?? [];
-
-  const myOutlet = me.profile?.outlet_id ?? null;
 
   return (
     <div className="space-y-6">
@@ -94,7 +135,11 @@ export default async function TransferListPage({
         </Link>
       </RegisterPageAction>
 
-      <TransferListFilters defaultOutletId={myOutlet} />
+      <TransferBoxTabs current={box} canHaveOutletBoxes={!!myOutlet} />
+
+      {box === "all" ? (
+        <TransferListFilters defaultOutletId={myOutlet} />
+      ) : null}
 
       {error ? (
         <p className="text-sm text-destructive">{error.message}</p>
@@ -119,8 +164,22 @@ export default async function TransferListPage({
                 <TableCell colSpan={7} className="py-10">
                   <EmptyState
                     icon={ArrowLeftRight}
-                    title="Belum ada transfer"
-                    description="Buat transfer pertama dari Central Pastry ke outlet."
+                    title={
+                      box === "incoming"
+                        ? "Tidak ada transfer masuk"
+                        : box === "outgoing"
+                          ? "Tidak ada transfer keluar"
+                          : box === "history"
+                            ? "Belum ada riwayat"
+                            : "Belum ada transfer"
+                    }
+                    description={
+                      box === "incoming"
+                        ? "Tidak ada transfer pending atau dalam perjalanan ke outlet ini."
+                        : box === "outgoing"
+                          ? "Tidak ada transfer pending atau dalam perjalanan dari outlet ini."
+                          : "Buat transfer pertama dari Central Pastry ke outlet."
+                    }
                   />
                 </TableCell>
               </TableRow>

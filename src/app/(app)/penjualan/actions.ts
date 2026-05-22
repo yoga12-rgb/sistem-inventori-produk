@@ -72,3 +72,54 @@ export async function createSaleAction(
   revalidatePath("/eod");
   return { ok: true, message: "Transaksi tercatat." };
 }
+
+
+export type VoidSaleResult = {
+  ok: boolean;
+  message?: string;
+};
+
+/**
+ * Membatalkan satu transaksi penjualan (soft delete + reversal stok).
+ * Permission ditegakkan oleh RLS pada UPDATE sales:
+ *   - Super admin bebas.
+ *   - Kasir hanya transaksi sendiri di outletnya pada hari yang sama.
+ */
+export async function voidSaleAction(
+  saleId: string,
+  reason: string | null,
+): Promise<VoidSaleResult> {
+  await requireUser();
+
+  if (!saleId || typeof saleId !== "string") {
+    return { ok: false, message: "ID transaksi tidak valid." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("fn_void_sale", {
+    p_sale_id: saleId,
+    p_reason: reason && reason.trim().length > 0 ? reason.trim() : null,
+  });
+
+  if (error) {
+    // RLS row-level violation tampil sebagai error 42501 / new row violates
+    // policy. Mapping pesan biar UX user-friendly.
+    if (
+      error.message.toLowerCase().includes("row-level security") ||
+      error.message.toLowerCase().includes("policy")
+    ) {
+      return {
+        ok: false,
+        message:
+          "Tidak diizinkan membatalkan transaksi ini (mungkin bukan milik Anda atau bukan hari yang sama).",
+      };
+    }
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath("/penjualan");
+  revalidatePath("/stok");
+  revalidatePath("/eod");
+  revalidatePath("/matrix");
+  return { ok: true };
+}

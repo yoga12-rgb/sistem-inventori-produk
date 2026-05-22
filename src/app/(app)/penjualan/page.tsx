@@ -3,7 +3,7 @@ import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RegisterPageAction } from "@/components/register-page-action";
 import { PosBoard } from "./pos-board";
-import type { SaleHistoryRow } from "./sale-history-sheet";
+import type { SaleHistoryRow } from "./sale-history-panel";
 import { requireUser } from "@/lib/auth";
 import { getMasterData } from "@/lib/master-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -27,8 +27,8 @@ export default async function PenjualanPage() {
     ? locations.filter((l) => l.type === "outlet")
     : locations.filter((l) => l.id === myOutletId);
 
-  // Riwayat hari ini (Asia/Jakarta) — cache awal untuk sheet kanan supaya
-  // buka pertama kali instan; sheet sendiri punya filter tanggal sendiri.
+  // Riwayat hari ini (Asia/Jakarta) — cache awal untuk panel Riwayat supaya
+  // tab pertama dibuka tetap instan; panel sendiri punya filter tanggal.
   const supabase = await createSupabaseServerClient();
   const startOfTodayJakarta = (() => {
     const d = new Date();
@@ -44,10 +44,11 @@ export default async function PenjualanPage() {
     .from("sales")
     .select(
       `
-        id, occurred_at, notes,
-        location:locations(code, name),
+        id, occurred_at, notes, voided_at, voided_by, void_reason,
+        created_by_id:created_by,
+        location:locations(id, code, name),
         items:sale_items(quantity, product:products(name, unit)),
-        created_by:profiles(full_name)
+        created_by:profiles!sales_created_by_fkey(full_name)
       `,
     )
     .gte("occurred_at", startOfTodayJakarta)
@@ -91,6 +92,9 @@ export default async function PenjualanPage() {
         allowedOutletIds={allowedOutlets.map((o) => o.id)}
         defaultOutletId={defaultOutletId}
         history={sales}
+        currentUserId={me.id}
+        isAdmin={isAdmin}
+        myOutletId={myOutletId}
       />
     </div>
   );

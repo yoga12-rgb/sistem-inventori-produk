@@ -93,7 +93,8 @@ async function callRpc(
     | "fn_ship_transfer"
     | "fn_confirm_transfer"
     | "fn_cancel_transfer"
-    | "fn_reject_transfer",
+    | "fn_reject_transfer"
+    | "fn_update_transfer_items",
   params: Record<string, unknown>,
   transferId: string,
 ): Promise<RpcState> {
@@ -115,12 +116,67 @@ export async function shipTransferAction(
   return callRpc("fn_ship_transfer", { p_transfer_id: id }, id);
 }
 
+/**
+ * Konfirmasi terima transfer.
+ *
+ * Mendukung dua mode:
+ *   1. Penerimaan utuh: tanpa field `items`. Semua qty original diterima.
+ *   2. Penerimaan parsial: field `items` berisi JSON
+ *      [{ item_id, received_qty, loss_reason? }, ...]. Selisih
+ *      (quantity - received_qty) dicatat sebagai movement `transfer_loss`
+ *      di lokasi asal (akuntabilitas pengirim).
+ */
 export async function confirmTransferAction(
   _prev: RpcState,
   formData: FormData,
 ): Promise<RpcState> {
   const id = (formData.get("id") as string) ?? "";
-  return callRpc("fn_confirm_transfer", { p_transfer_id: id }, id);
+  const itemsRaw = (formData.get("items") as string) || "";
+
+  let parsedItems: Array<{
+    item_id: string;
+    received_qty: number;
+    loss_reason: string | null;
+  }> | null = null;
+
+  if (itemsRaw.trim().length > 0) {
+    try {
+      const json = JSON.parse(itemsRaw);
+      const schema = z
+        .array(
+          z.object({
+            item_id: z.string().uuid(),
+            received_qty: z
+              .number()
+              .int("Qty diterima harus bilangan bulat")
+              .min(0, "Qty diterima minimal 0"),
+            loss_reason: z.string().trim().max(300).nullable().optional(),
+          }),
+        )
+        .min(1);
+      const result = schema.safeParse(json);
+      if (!result.success) {
+        return {
+          ok: false,
+          message:
+            result.error.issues[0]?.message ?? "Item penerimaan tidak valid",
+        };
+      }
+      parsedItems = result.data.map((it) => ({
+        item_id: it.item_id,
+        received_qty: it.received_qty,
+        loss_reason: it.loss_reason ?? null,
+      }));
+    } catch {
+      return { ok: false, message: "Format item tidak valid" };
+    }
+  }
+
+  return callRpc(
+    "fn_confirm_transfer",
+    { p_transfer_id: id, p_items: parsedItems },
+    id,
+  );
 }
 
 export async function cancelTransferAction(
@@ -140,6 +196,52 @@ export async function rejectTransferAction(
   return callRpc(
     "fn_reject_transfer",
     { p_transfer_id: id, p_reason: reason },
+    id,
+  );
+}
+
+/**
+ * Edit item transfer selama status `pending`. Pengirim atau super admin saja.
+ *
+ * `items` field di FormData = JSON array of
+ *   { source_batch_id: uuid, quantity: int }.
+ *
+ * Implementasi server: rebuild items (kembalikan stok lama, deduct ulang).
+ */
+export async function updateTransferItemsAction(
+  _prev: RpcState,
+  formData: FormData,
+): Promise<RpcState> {
+  const id = (formData.get("id") as string) ?? "";
+  const itemsRaw = (formData.get("items") as string) || "";
+  let items: unknown = [];
+  try {
+    items = JSON.parse(itemsRaw);
+  } catch {
+    return { ok: false, message: "Format item tidak valid" };
+  }
+  const schema = z
+    .array(
+      z.object({
+        source_batch_id: z.string().uuid(),
+        quantity: z
+          .number()
+          .int("Qty harus bilangan bulat")
+          .positive("Qty minimal 1"),
+      }),
+    )
+    .min(1, "Minimal satu item");
+  const parsed = schema.safeParse(items);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "Item tidak valid",
+    };
+  }
+
+  return callRpc(
+    "fn_update_transfer_items",
+    { p_transfer_id: id, p_items: parsed.data },
     id,
   );
 }

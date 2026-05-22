@@ -10,12 +10,13 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  History,
   Layers,
   Minus,
   Plus,
+  Receipt,
   Search,
   ShoppingCart,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -24,6 +25,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { useMasterData } from "@/components/master-data-provider";
@@ -42,9 +49,9 @@ import {
   type SplitDraft,
 } from "./batch-picker-dialog";
 import {
-  SaleHistorySheet,
+  SaleHistoryPanel,
   type SaleHistoryRow,
-} from "./sale-history-sheet";
+} from "./sale-history-panel";
 
 /**
  * Tipe-tipe ini di-alias dari master data agar kode lama yang import
@@ -128,10 +135,16 @@ export function PosBoard({
   allowedOutletIds,
   defaultOutletId,
   history,
+  currentUserId,
+  isAdmin,
+  myOutletId,
 }: {
   allowedOutletIds: string[];
   defaultOutletId: string;
   history: SaleHistoryRow[];
+  currentUserId: string | null;
+  isAdmin: boolean;
+  myOutletId: string | null;
 }) {
   // Master data dari provider (di-fetch sekali di layout, tidak hit DB
   // setiap navigasi). `outlets` di sini = subset locations type='outlet'
@@ -167,13 +180,13 @@ export function PosBoard({
   const [categoryFilter, setCategoryFilterState] = useState<string>("all");
 
   // Restore saved filter values dari localStorage sekali saat mount.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const saved = readPersistedFilters();
     if (
       saved.outletId &&
       outlets.some((o) => o.id === saved.outletId)
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOutletIdState(saved.outletId);
     }
     const validTabs: FilterTab[] = [
@@ -226,8 +239,25 @@ export function PosBoard({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
+
+  // Counter eksternal — di-bump tiap event yang mengubah daftar sales,
+  // supaya tab Riwayat tahu harus refetch (tanpa menunggu realtime).
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  type PageTab = "kasir" | "riwayat";
+  const [pageTab, setPageTab] = useState<PageTab>("kasir");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("penjualan-tab");
+    if (saved === "kasir" || saved === "riwayat") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPageTab(saved);
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("penjualan-tab", pageTab);
+  }, [pageTab]);
 
   const [pickerProductId, setPickerProductId] = useState<string | null>(null);
   const [pickerCartUid, setPickerCartUid] = useState<string | null>(null);
@@ -550,6 +580,7 @@ export function PosBoard({
       // Refetch manual karena realtime di-disable di dev lokal.
       // Di production, realtime channel juga akan memicu refetch (idempotent).
       void refetchBatches();
+      setHistoryRefreshKey((k) => k + 1);
     } else {
       toast.error("Gagal mencatat", result.message ?? "Periksa kembali isian.");
     }
@@ -587,8 +618,21 @@ export function PosBoard({
 
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="space-y-4">
+    <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as PageTab)}>
+      <TabsList className="mb-4">
+        <TabsTrigger value="kasir">
+          <Sparkles className="h-4 w-4" />
+          Kasir
+        </TabsTrigger>
+        <TabsTrigger value="riwayat">
+          <Receipt className="h-4 w-4" />
+          Riwayat
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="kasir">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-60 flex-1">
             <label className="flex flex-col gap-1.5">
@@ -630,16 +674,6 @@ export function PosBoard({
               </Select>
             </label>
           ) : null}
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className="h-4 w-4" />
-            Riwayat
-          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -779,22 +813,39 @@ export function PosBoard({
           />
         </div>
       </aside>
+        </div>
+      </TabsContent>
 
-      <div className="fixed inset-x-0 bottom-16 z-30 px-4 lg:hidden">
-        {cart.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setCartSheetOpen(true)}
-            className="flex w-full items-center justify-between rounded-full border border-primary/40 bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg"
-          >
-            <span className="inline-flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4" />
-              {cart.length} item · {formatNumber(cartTotalQty)} qty
-            </span>
-            <span className="text-xs opacity-80">Buka</span>
-          </button>
-        ) : null}
-      </div>
+      <TabsContent value="riwayat">
+        <SaleHistoryPanel
+          initialSales={history}
+          active={pageTab === "riwayat"}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
+          myOutletId={myOutletId}
+          onVoided={() => void refetchBatches()}
+          refreshKey={historyRefreshKey}
+        />
+      </TabsContent>
+
+      {/* Floating cart bottom (mobile) — hanya saat tab Kasir aktif. */}
+      {pageTab === "kasir" ? (
+        <div className="fixed inset-x-0 bottom-16 z-30 px-4 lg:hidden">
+          {cart.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setCartSheetOpen(true)}
+              className="flex w-full items-center justify-between rounded-full border border-primary/40 bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg"
+            >
+              <span className="inline-flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" />
+                {cart.length} item · {formatNumber(cartTotalQty)} qty
+              </span>
+              <span className="text-xs opacity-80">Buka</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <Sheet
         open={cartSheetOpen}
@@ -829,12 +880,6 @@ export function PosBoard({
         </div>
       </Sheet>
 
-      <SaleHistorySheet
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        initialSales={history}
-      />
-
       {pickerProduct && pickerCartItem ? (
         <BatchPickerDialog
           open
@@ -857,7 +902,7 @@ export function PosBoard({
           }}
         />
       ) : null}
-    </div>
+    </Tabs>
   );
 }
 

@@ -49,6 +49,9 @@ type Detail = {
   items: {
     id: string;
     quantity: number;
+    received_qty: number | null;
+    loss_reason: string | null;
+    source_batch_id: string;
     product: {
       sku: string;
       name: string;
@@ -83,7 +86,7 @@ export default async function TransferDetailPage({
         created_by:profiles!transfers_created_by_fkey(full_name),
         confirmed_by:profiles!transfers_confirmed_by_fkey(full_name),
         items:transfer_items(
-          id, quantity,
+          id, quantity, received_qty, loss_reason, source_batch_id,
           product:products(sku, name, unit, is_perishable),
           source_batch:stock_batches!transfer_items_source_batch_id_fkey(id, produced_at, expires_at),
           destination_batch:stock_batches!transfer_items_destination_batch_id_fkey(id)
@@ -105,6 +108,19 @@ export default async function TransferDetailPage({
   const canReceive = myOutlet === t.to_location_id;
 
   const totalQty = t.items.reduce((sum, i) => sum + Number(i.quantity), 0);
+  const totalReceived = t.items.reduce(
+    (sum, i) => sum + Number(i.received_qty ?? 0),
+    0,
+  );
+  const totalLoss = t.items.reduce(
+    (sum, i) =>
+      sum +
+      (i.received_qty != null
+        ? Math.max(0, Number(i.quantity) - Number(i.received_qty))
+        : 0),
+    0,
+  );
+  const isReceived = t.status === "received";
 
   return (
     <div className="space-y-6">
@@ -136,6 +152,11 @@ export default async function TransferDetailPage({
               <Badge variant={transferStatusVariant(t.status)}>
                 {transferStatusLabel(t.status)}
               </Badge>
+              {isReceived && totalLoss > 0 ? (
+                <Badge variant="warning">
+                  Susut {formatNumber(totalLoss)}
+                </Badge>
+              ) : null}
             </div>
             <TransferActions
               id={t.id}
@@ -144,6 +165,17 @@ export default async function TransferDetailPage({
               canSend={canSend}
               canReceive={canReceive}
               isAdmin={isAdmin}
+              fromLocationId={t.from_location_id}
+              items={t.items.map((it) => ({
+                id: it.id,
+                product: it.product,
+                quantity: Number(it.quantity),
+              }))}
+              editableItems={t.items.map((it) => ({
+                id: it.id,
+                source_batch_id: it.source_batch_id,
+                quantity: Number(it.quantity),
+              }))}
             />
           </div>
         </CardHeader>
@@ -157,7 +189,14 @@ export default async function TransferDetailPage({
             label="Diterima"
             value={t.received_at ? formatDateTime(t.received_at) : "—"}
           />
-          <Meta label="Total qty" value={formatNumber(totalQty)} />
+          <Meta
+            label={isReceived ? "Total diterima" : "Total qty"}
+            value={
+              isReceived
+                ? `${formatNumber(totalReceived)} / ${formatNumber(totalQty)}`
+                : formatNumber(totalQty)
+            }
+          />
           <Meta label="Pembuat" value={t.created_by?.full_name ?? "—"} />
           <Meta
             label="Diproses oleh"
@@ -185,54 +224,93 @@ export default async function TransferDetailPage({
                 <TableRow>
                   <TableHead>Produk</TableHead>
                   <TableHead>Batch sumber</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Dikirim</TableHead>
+                  {isReceived ? (
+                    <>
+                      <TableHead className="text-right">Diterima</TableHead>
+                      <TableHead className="text-right">Susut</TableHead>
+                      <TableHead>Alasan</TableHead>
+                    </>
+                  ) : null}
                   <TableHead>Batch tujuan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {t.items.map((it) => (
-                  <TableRow key={it.id}>
-                    <TableCell>
-                      <div className="font-medium">
-                        {it.product?.name ?? "—"}
-                      </div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {it.product?.sku}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {it.source_batch ? (
-                        <div className="space-y-0.5">
-                          <div>
-                            Produksi {formatDateTime(it.source_batch.produced_at)}
-                          </div>
-                          {it.product?.is_perishable && it.source_batch.expires_at ? (
-                            <div className="text-xs">
-                              Exp {formatDate(it.source_batch.expires_at)}
-                            </div>
-                          ) : null}
+                {t.items.map((it) => {
+                  const received = it.received_qty != null
+                    ? Number(it.received_qty)
+                    : null;
+                  const loss =
+                    received != null
+                      ? Math.max(0, Number(it.quantity) - received)
+                      : 0;
+                  return (
+                    <TableRow key={it.id}>
+                      <TableCell>
+                        <div className="font-medium">
+                          {it.product?.name ?? "—"}
                         </div>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatNumber(Number(it.quantity))}{" "}
-                      <span className="text-muted-foreground">
-                        {it.product?.unit}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {it.destination_batch ? (
-                        <Badge variant="success">Sudah dibuat</Badge>
-                      ) : (
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {it.product?.sku}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {it.source_batch ? (
+                          <div className="space-y-0.5">
+                            <div>
+                              Produksi {formatDateTime(it.source_batch.produced_at)}
+                            </div>
+                            {it.product?.is_perishable && it.source_batch.expires_at ? (
+                              <div className="text-xs">
+                                Exp {formatDate(it.source_batch.expires_at)}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        {formatNumber(Number(it.quantity))}{" "}
                         <span className="text-muted-foreground">
-                          Menunggu
+                          {it.product?.unit}
                         </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      {isReceived ? (
+                        <>
+                          <TableCell className="text-right tabular-nums">
+                            {received != null ? (
+                              formatNumber(received)
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {loss > 0 ? (
+                              <span className="font-medium text-warning">
+                                {formatNumber(loss)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {it.loss_reason ?? "—"}
+                          </TableCell>
+                        </>
+                      ) : null}
+                      <TableCell className="text-sm">
+                        {it.destination_batch ? (
+                          <Badge variant="success">Sudah dibuat</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Menunggu
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

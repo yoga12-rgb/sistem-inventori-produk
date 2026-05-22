@@ -31,6 +31,7 @@ import {
 import { TopbarPageInfo } from "@/components/topbar-page-info";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TransferNotifier } from "@/components/transfer-notifier";
+import { useTransferInbox } from "@/components/transfer-inbox";
 import { cn } from "@/lib/utils";
 
 type Role = "super_admin" | "cashier" | null;
@@ -472,7 +473,24 @@ function SidebarLeafLink({
     >
       <item.icon className="h-4 w-4 flex-shrink-0" />
       <span className="truncate">{item.label}</span>
+      <NavBadge href={item.href} />
     </Link>
+  );
+}
+
+/**
+ * Badge angka kecil untuk nav item tertentu (saat ini: /transfer).
+ * Otomatis sembunyi kalau angka 0.
+ */
+function NavBadge({ href }: { href: string }) {
+  const inbox = useTransferInbox();
+  if (href !== "/transfer") return null;
+  const count = inbox.incoming + inbox.outgoing;
+  if (count === 0) return null;
+  return (
+    <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
 
@@ -554,13 +572,14 @@ function CollapsedSidebarLink({
         aria-current={active ? "page" : undefined}
         aria-label={item.label}
         className={cn(
-          "mx-auto grid h-9 w-9 place-items-center rounded-md transition-colors",
+          "relative mx-auto grid h-9 w-9 place-items-center rounded-md transition-colors",
           active
             ? "bg-accent text-accent-foreground"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
         <item.icon className="h-4 w-4" />
+        <NavDot href={item.href} />
       </Link>
       {hovered && coords && typeof window !== "undefined"
         ? createPortal(
@@ -590,12 +609,42 @@ function BottomNavLink({
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium transition-colors",
+        "relative flex h-full w-full flex-col items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium transition-colors",
         active ? "text-primary" : "text-muted-foreground hover:text-foreground",
       )}
     >
       <item.icon className="h-5 w-5" />
       <span>{item.label}</span>
+      <NavDot href={item.href} top="top-1" right="right-3" />
     </Link>
+  );
+}
+
+/**
+ * Dot kecil di pojok kanan atas icon-only nav (mobile bottom + collapsed
+ * sidebar). Aktif kalau ada transfer pending.
+ */
+function NavDot({
+  href,
+  top = "-top-0.5",
+  right = "-right-0.5",
+}: {
+  href: string;
+  top?: string;
+  right?: string;
+}) {
+  const inbox = useTransferInbox();
+  if (href !== "/transfer") return null;
+  const count = inbox.incoming + inbox.outgoing;
+  if (count === 0) return null;
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "absolute h-2 w-2 rounded-full bg-primary ring-2 ring-card",
+        top,
+        right,
+      )}
+    />
   );
 }
