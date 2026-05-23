@@ -29,8 +29,7 @@ const EXACT: Record<string, PageInfoEntry> = {
   "/": {
     eyebrow: "Dashboard",
     title: "Dashboard",
-    summary:
-      "Ringkasan operasional & shortcut ke menu yang sering dipakai.",
+    summary: "Ringkasan operasional & shortcut ke menu yang sering dipakai.",
     features: [
       {
         title: "Banner expired-soon",
@@ -45,9 +44,7 @@ const EXACT: Record<string, PageInfoEntry> = {
         desc: "Hitungan cepat: batch aktif, outlet, produk, pengguna.",
       },
     ],
-    tips: [
-      "Setiap halaman punya ikon ⓘ di top bar untuk panduan cepat.",
-    ],
+    tips: ["Setiap halaman punya ikon ⓘ di top bar untuk panduan cepat."],
   },
 
   "/stok": {
@@ -144,8 +141,7 @@ const EXACT: Record<string, PageInfoEntry> = {
   "/transfer/baru": {
     eyebrow: "Operasional",
     title: "Buat Transfer",
-    summary:
-      "Form multi-item untuk membuat transfer baru antar lokasi.",
+    summary: "Form multi-item untuk membuat transfer baru antar lokasi.",
     features: [
       {
         title: "Pilih batch sumber",
@@ -200,14 +196,14 @@ const EXACT: Record<string, PageInfoEntry> = {
   },
 
   "/eod": {
-    eyebrow: "Operasional",
-    title: "End of Day Report",
+    eyebrow: "Laporan",
+    title: "Laporan WA",
     summary:
-      "Ringkasan penjualan, disposal, dan stok akhir per outlet untuk dibagikan ke WhatsApp.",
+      "Laporan stok harian per outlet untuk dibagikan ke WhatsApp. Format: stok terjual, update stok, disposal, dan riwayat transfer.",
     features: [
       {
         title: "Pratinjau lengkap",
-        desc: "Section Terjual, Disposal (per kategori), dan Stock Update per batch.",
+        desc: "Section STOCK TERJUAL, STOCK UPDATE, Disposal, dan Transfer stock.",
       },
       {
         title: "Bagikan ke WhatsApp",
@@ -221,10 +217,14 @@ const EXACT: Record<string, PageInfoEntry> = {
         title: "Filter outlet & tanggal",
         desc: "Tanggal disimpan di browser agar tidak perlu pilih ulang setiap buka.",
       },
+      {
+        title: "Opsi transfer",
+        desc: "Checkbox untuk menyertakan atau tidak riwayat transfer stock.",
+      },
     ],
     tips: [
-      "Disposal dipisah per kategori (Expired, Compliment, Tester, Rusak) dengan emoji.",
-      "Tanggal pada Stock Update = produced_at batch.",
+      "Produk diurutkan berdasarkan urutan kategori.",
+      "Total stok terjual ditampilkan di akhir section.",
     ],
   },
 
@@ -257,11 +257,36 @@ const EXACT: Record<string, PageInfoEntry> = {
     ],
   },
 
+  "/initial-stock": {
+    eyebrow: "Migrasi",
+    title: "Stok Awal",
+    summary:
+      "Isi stok awal setiap outlet saat pertama kali migrasi dari sistem manual ke Sistem Inventaris.",
+    features: [
+      {
+        title: "Multi-item submission",
+        desc: "Tambah beberapa item stok awal sekaligus — pilih outlet tujuan, produk, qty, dan tanggal produksi.",
+      },
+      {
+        title: "Auto-fill expiry",
+        desc: "Untuk produk perishable, tanggal kedaluwarsa otomatis terisi berdasarkan shelf life default produk.",
+      },
+      {
+        title: "Tipe movement adjustment_in",
+        desc: "Setiap baris tercatat sebagai adjustment_in — tidak memengaruhi logika FIFO penjualan.",
+      },
+    ],
+    tips: [
+      "Hanya untuk Super Admin. Halaman ini sebaiknya tidak dipakai untuk operasional harian.",
+      "Untuk produk non-perishable, tanggal produksi & expiry tidak diperlukan.",
+      "Setelah go-live, gunakan Produksi atau Stok Masuk untuk penambahan stok reguler.",
+    ],
+  },
+
   "/aktivitas": {
     eyebrow: "Audit",
     title: "Aktivitas",
-    summary:
-      "200 movement stok terbaru sebagai audit trail.",
+    summary: "200 movement stok terbaru sebagai audit trail.",
     features: [
       {
         title: "Filter via URL",
@@ -306,8 +331,7 @@ const EXACT: Record<string, PageInfoEntry> = {
   "/master/categories": {
     eyebrow: "Master Data",
     title: "Kategori",
-    summary:
-      "Kelompokkan produk untuk filter cepat di Penjualan & Stok.",
+    summary: "Kelompokkan produk untuk filter cepat di Penjualan & Stok.",
     features: [
       {
         title: "Ikon & warna",
@@ -322,9 +346,7 @@ const EXACT: Record<string, PageInfoEntry> = {
         desc: "Nonaktifkan tanpa menghapus produk yang menggunakan.",
       },
     ],
-    tips: [
-      'Produk lama tanpa kategori akan masuk bucket "Tanpa kategori".',
-    ],
+    tips: ['Produk lama tanpa kategori akan masuk bucket "Tanpa kategori".'],
   },
 
   "/master/products": {

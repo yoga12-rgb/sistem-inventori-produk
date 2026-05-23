@@ -72,8 +72,8 @@ Iterasi disusun agar tiap rilis dapat dipakai end-to-end.
   — semua untuk satu tanggal Asia/Jakarta. Opening dihitung dari net
   movement sebelum tanggal target.
 - Function `fn_inventory_matrix_cell(...)` untuk drilldown tiap sel ke
-  movement individual (mendukung filter kind: in/out/sold/transfer*\*/
-  expired/damage/adjustment*\*).
+  movement individual (mendukung filter kind: in/out/sold/transfer\*/
+  expired/damage/adjustment\*).
 - Halaman `/matrix` dengan navigasi tanggal (◀/▶/Hari ini), filter outlet
   persisten di `localStorage`, kolom interaktif (klik angka → modal detail
   - ringkasan komponen + chip filter sub-kind).
@@ -208,3 +208,22 @@ Iterasi disusun agar tiap rilis dapat dipakai end-to-end.
 
 - Realtime: channel cleanup di useEffect (removeChannel on unmount)
 - Transfer code format race condition di fixed dengan advisory lock
+
+---
+
+## 🔄 Iterasi 9 — Go-Live & Initial Stock _(sedang dikerjakan)_
+
+### Initial Stock Entry
+
+Fitur untuk mengisi stok awal saat pertama kali migrasi dari sistem manual ke aplikasi.
+
+- Migration `20260522150000_initial_stock_entry.sql`:
+  - Function `fn_initial_stock_entry(p_location_id, p_product_id, p_quantity, p_produced_at?, p_expires_at?, p_notes?)`
+  - Membuat batch baru + movement `adjustment_in` di lokasi mana pun (outlet, bukan hanya central kitchen)
+  - `security invoker` + Super Admin only
+- Halaman `/initial-stock` (Super Admin only):
+  - Multi-item form: pilih outlet, produk, qty, tanggal produksi, tanggal expired
+  - Auto-fill expires_at berdasarkan shelf life produk
+  - Untuk perishable: tanggal produksi wajib, expired auto-calculate
+  - Untuk non-perishable: tanggal produksi & expired tidak diperlukan
+- Sidebar: menu "Stok Awal" dengan ikon Database, hanya untuk Super Admin

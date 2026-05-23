@@ -1,11 +1,10 @@
-import Link from "next/link";
-import { ArrowLeft, Receipt } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EodPanel } from "./eod-panel";
 import { requireUser } from "@/lib/auth";
 import { getMasterData } from "@/lib/master-data";
 
-export const metadata = { title: "End of Day — Sistem Inventaris" };
+export const metadata = { title: "Laporan WA — Sistem Inventaris" };
 
 export default async function EodPage() {
   const me = await requireUser();
@@ -35,21 +34,10 @@ export default async function EodPage() {
   }
 
   const defaultOutletId =
-    allowedOutlets.find((l) => l.id === myOutletId)?.id ??
-    allowedOutlets[0].id;
+    allowedOutlets.find((l) => l.id === myOutletId)?.id ?? allowedOutlets[0].id;
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          href="/penjualan"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Kembali ke Penjualan
-        </Link>
-      </div>
-
       <EodPanel
         allowedOutletIds={allowedOutlets.map((o) => o.id)}
         defaultOutletId={defaultOutletId}

@@ -94,14 +94,30 @@ export const getMasterData = cache(async (): Promise<MasterData> => {
 
   // Supabase mengembalikan FK join sebagai array meski FK-nya tunggal —
   // flatten ke object | null agar konsumen tidak perlu cek shape.
-  const products = ((prodsRes.data ?? []) as unknown as Array<
-    Record<string, unknown>
-  >).map((p) => ({
+  const products = (
+    (prodsRes.data ?? []) as unknown as Array<Record<string, unknown>>
+  ).map((p) => ({
     ...p,
     category: Array.isArray(p.category)
-      ? (p.category[0] as MasterProduct["category"]) ?? null
-      : (p.category as MasterProduct["category"]) ?? null,
+      ? ((p.category[0] as MasterProduct["category"]) ?? null)
+      : ((p.category as MasterProduct["category"]) ?? null),
   })) as unknown as MasterProduct[];
+
+  // Urutkan produk berdasarkan sort kategori, lalu nama produk.
+  // Produk tanpa kategori (category_id = null) diletakkan paling akhir.
+  const categorySortMap = new Map<string, number>();
+  for (const c of categories) categorySortMap.set(c.id, c.sort);
+
+  products.sort((a, b) => {
+    const sortA = a.category_id
+      ? (categorySortMap.get(a.category_id) ?? 999)
+      : 999;
+    const sortB = b.category_id
+      ? (categorySortMap.get(b.category_id) ?? 999)
+      : 999;
+    if (sortA !== sortB) return sortA - sortB;
+    return a.name.localeCompare(b.name, "id");
+  });
 
   return { locations, categories, products };
 });

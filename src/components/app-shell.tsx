@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   Boxes,
   Building2,
+  Database,
   FileText,
   FolderTree,
   Grid3x3,
@@ -61,12 +62,18 @@ const NAV: NavItem[] = [
     bottomBar: true,
   },
   { href: "/penjualan", label: "Penjualan", icon: Receipt, bottomBar: true },
-  { href: "/eod", label: "End of Day", icon: FileText },
+  { href: "/eod", label: "Laporan WA", icon: FileText },
   { href: "/matrix", label: "Inventory Matrix", icon: Grid3x3 },
   {
     href: "/aktivitas",
     label: "Aktivitas",
     icon: Activity,
+    roles: ["super_admin"],
+  },
+  {
+    href: "/initial-stock",
+    label: "Stok Awal",
+    icon: Database,
     roles: ["super_admin"],
   },
   {
@@ -127,12 +134,16 @@ export function AppShell({
   // Toggle sidebar (desktop). State: expanded (default) ↔ collapsed (rail).
   // Saat collapsed, hover ikon menampilkan tooltip kecil — bukan expand penuh.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Hydration-safe: baca localStorage setelah mount agar server & client
+  // render first-pass dengan nilai yang sama (false).
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("sidebar:collapsed");
-    if (saved === "1") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSidebarCollapsed(true);
+    try {
+      if (window.localStorage.getItem("sidebar:collapsed") === "1") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
   const toggleSidebar = useCallback(() => {
@@ -140,10 +151,7 @@ export function AppShell({
       const next = !prev;
       if (typeof window !== "undefined") {
         try {
-          window.localStorage.setItem(
-            "sidebar:collapsed",
-            next ? "1" : "0",
-          );
+          window.localStorage.setItem("sidebar:collapsed", next ? "1" : "0");
         } catch {
           /* ignore */
         }
@@ -189,101 +197,205 @@ export function AppShell({
   return (
     <PageActionSlotProvider>
       <div className="flex min-h-dvh">
-      {user.outletId ? (
-        <TransferNotifier myOutletId={user.outletId} myUserId={user.id} />
-      ) : null}
+        {user.outletId ? (
+          <TransferNotifier myOutletId={user.outletId} myUserId={user.id} />
+        ) : null}
 
-      {/* ===== Sidebar (desktop only) ===== */}
-      {/*
+        {/* ===== Sidebar (desktop only) ===== */}
+        {/*
         Pola "icon-rail collapse":
         - Default `w-64` (expanded, label penuh).
         - Saat `sidebarCollapsed`, lebar rail jadi `w-14` (icon-only).
           Hover ikon menampilkan tooltip floating dengan label, bukan
           expand sidebar.
       */}
-      <aside
-        className={cn(
-          "sticky top-0 hidden h-dvh flex-shrink-0 flex-col border-r bg-card transition-[width] duration-200 ease-out lg:flex",
-          sidebarCollapsed ? "w-14 overflow-visible" : "w-64 overflow-hidden",
-        )}
-      >
-        <div
+        <aside
           className={cn(
-            "flex h-16 items-center gap-2 border-b",
-            sidebarExpanded ? "justify-between px-4" : "justify-center px-2",
+            "sticky top-0 hidden h-dvh flex-shrink-0 flex-col border-r bg-card transition-[width] duration-200 ease-out lg:flex",
+            sidebarCollapsed ? "w-14 overflow-visible" : "w-64 overflow-hidden",
           )}
         >
-          {sidebarExpanded ? (
-            <Link
-              href="/"
-              className="flex items-center gap-2 font-semibold tracking-tight"
-            >
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
-                <Package className="h-4 w-4" />
-              </span>
-              <span>Inventaris</span>
-            </Link>
-          ) : (
-            <Link href="/" aria-label="Inventaris">
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
-                <Package className="h-4 w-4" />
-              </span>
-            </Link>
-          )}
-          {sidebarExpanded ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              aria-label={
-                sidebarCollapsed ? "Pin sidebar terbuka" : "Sembunyikan sidebar"
-              }
-              title={`${sidebarCollapsed ? "Pin sidebar" : "Sembunyikan sidebar"} (Ctrl+B)`}
-              className="flex-shrink-0"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="h-4 w-4" />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" />
-              )}
-            </Button>
-          ) : null}
+          <div
+            className={cn(
+              "flex h-16 items-center gap-2 border-b",
+              sidebarExpanded ? "justify-between px-4" : "justify-center px-2",
+            )}
+          >
+            {sidebarExpanded ? (
+              <Link
+                href="/"
+                className="flex items-center gap-2 font-semibold tracking-tight"
+              >
+                <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
+                  <Package className="h-4 w-4" />
+                </span>
+                <span>Inventaris</span>
+              </Link>
+            ) : (
+              <Link href="/" aria-label="Inventaris">
+                <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
+                  <Package className="h-4 w-4" />
+                </span>
+              </Link>
+            )}
+            {sidebarExpanded ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                aria-label={
+                  sidebarCollapsed
+                    ? "Pin sidebar terbuka"
+                    : "Sembunyikan sidebar"
+                }
+                title={`${sidebarCollapsed ? "Pin sidebar" : "Sembunyikan sidebar"} (Ctrl+B)`}
+                className="flex-shrink-0"
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="h-4 w-4" />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" />
+                )}
+              </Button>
+            ) : null}
+          </div>
+
+          <nav
+            className={cn(
+              "flex-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
+              sidebarExpanded
+                ? "overflow-y-auto p-3"
+                : "overflow-visible px-2 py-2",
+            )}
+          >
+            <SidebarTree
+              items={navItems}
+              pathname={pathname}
+              collapsed={sidebarCollapsed}
+            />
+          </nav>
+
+          <div
+            className={cn("border-t", sidebarExpanded ? "p-3" : "px-2 py-3")}
+          >
+            {sidebarExpanded ? (
+              <>
+                <div className="mb-2 px-2">
+                  <div className="text-sm font-medium leading-tight">
+                    {user.fullName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {roleLabel}
+                  </div>
+                </div>
+                <form action="/logout" method="POST">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="submit"
+                    className="w-full justify-center"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Keluar
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <form
+                action="/logout"
+                method="POST"
+                className="flex justify-center"
+              >
+                <Button
+                  variant="outline"
+                  size="icon"
+                  type="submit"
+                  title="Keluar"
+                  aria-label="Keluar"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </form>
+            )}
+          </div>
+        </aside>
+
+        {/* ===== Main column ===== */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Mobile/tablet top bar — judul halaman + ⓘ + theme toggle. */}
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-card/95 px-4 backdrop-blur lg:hidden">
+            <TopbarPageInfo className="flex-1" />
+            <div className="flex flex-shrink-0 items-center gap-1">
+              <PageActionSlotOutlet />
+              <ThemeToggle />
+            </div>
+          </header>
+
+          {/* Desktop top bar — judul halaman + ⓘ kiri, slot aksi + theme toggle kanan. */}
+          <header className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-3 border-b bg-card/80 px-6 backdrop-blur lg:flex">
+            <TopbarPageInfo className="flex-1" />
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <PageActionSlotOutlet />
+              <ThemeToggle />
+            </div>
+          </header>
+
+          <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
+            {children}
+          </main>
         </div>
 
+        {/* ===== Bottom nav (mobile + tablet) ===== */}
         <nav
-          className={cn(
-            "flex-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
-            sidebarExpanded
-              ? "overflow-y-auto p-3"
-              : "overflow-visible px-2 py-2",
-          )}
+          aria-label="Navigasi utama"
+          className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur lg:hidden"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          <SidebarTree
-            items={navItems}
-            pathname={pathname}
-            collapsed={sidebarCollapsed}
-          />
+          <ul className="grid grid-cols-5">
+            {bottomBarNav.map((item) => (
+              <li key={item.href}>
+                <BottomNavLink
+                  item={item}
+                  active={matchesActive(pathname, item.href)}
+                />
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                aria-haspopup="dialog"
+                aria-expanded={menuOpen}
+              >
+                <Menu className="h-5 w-5" />
+                <span>Menu</span>
+              </button>
+            </li>
+          </ul>
         </nav>
 
-        <div
-          className={cn(
-            "border-t",
-            sidebarExpanded ? "p-3" : "px-2 py-3",
-          )}
+        <Sheet
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          side="right"
+          title="Menu"
+          description={`${user.fullName} · ${roleLabel}`}
+          className="lg:hidden"
         >
-          {sidebarExpanded ? (
-            <>
-              <div className="mb-2 px-2">
-                <div className="text-sm font-medium leading-tight">
-                  {user.fullName}
-                </div>
-                <div className="text-xs text-muted-foreground">{roleLabel}</div>
-              </div>
+          <div className="flex h-full flex-col">
+            <nav className="flex-1 overflow-y-auto p-3">
+              <SidebarTree
+                items={navItems}
+                pathname={pathname}
+                onNavigate={() => setMenuOpen(false)}
+              />
+            </nav>
+            <div className="border-t p-3">
               <form action="/logout" method="POST">
                 <Button
                   variant="outline"
-                  size="sm"
                   type="submit"
                   className="w-full justify-center"
                 >
@@ -291,108 +403,9 @@ export function AppShell({
                   Keluar
                 </Button>
               </form>
-            </>
-          ) : (
-            <form action="/logout" method="POST" className="flex justify-center">
-              <Button
-                variant="outline"
-                size="icon"
-                type="submit"
-                title="Keluar"
-                aria-label="Keluar"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </form>
-          )}
-        </div>
-      </aside>
-
-      {/* ===== Main column ===== */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile/tablet top bar — judul halaman + ⓘ + theme toggle. */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-card/95 px-4 backdrop-blur lg:hidden">
-          <TopbarPageInfo className="flex-1" />
-          <div className="flex flex-shrink-0 items-center gap-1">
-            <PageActionSlotOutlet />
-            <ThemeToggle />
+            </div>
           </div>
-        </header>
-
-        {/* Desktop top bar — judul halaman + ⓘ kiri, slot aksi + theme toggle kanan. */}
-        <header className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-3 border-b bg-card/80 px-6 backdrop-blur lg:flex">
-          <TopbarPageInfo className="flex-1" />
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <PageActionSlotOutlet />
-            <ThemeToggle />
-          </div>
-        </header>
-
-        <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
-          {children}
-        </main>
-      </div>
-
-      {/* ===== Bottom nav (mobile + tablet) ===== */}
-      <nav
-        aria-label="Navigasi utama"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur lg:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <ul className="grid grid-cols-5">
-          {bottomBarNav.map((item) => (
-            <li key={item.href}>
-              <BottomNavLink
-                item={item}
-                active={matchesActive(pathname, item.href)}
-              />
-            </li>
-          ))}
-          <li>
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-              aria-haspopup="dialog"
-              aria-expanded={menuOpen}
-            >
-              <Menu className="h-5 w-5" />
-              <span>Menu</span>
-            </button>
-          </li>
-        </ul>
-      </nav>
-
-      <Sheet
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        side="right"
-        title="Menu"
-        description={`${user.fullName} · ${roleLabel}`}
-        className="lg:hidden"
-      >
-        <div className="flex h-full flex-col">
-          <nav className="flex-1 overflow-y-auto p-3">
-            <SidebarTree
-              items={navItems}
-              pathname={pathname}
-              onNavigate={() => setMenuOpen(false)}
-            />
-          </nav>
-          <div className="border-t p-3">
-            <form action="/logout" method="POST">
-              <Button
-                variant="outline"
-                type="submit"
-                className="w-full justify-center"
-              >
-                <LogOut className="h-4 w-4" />
-                Keluar
-              </Button>
-            </form>
-          </div>
-        </div>
-      </Sheet>
+        </Sheet>
       </div>
     </PageActionSlotProvider>
   );
@@ -455,7 +468,13 @@ function SidebarLeafLink({
   collapsed?: boolean;
 }) {
   if (collapsed) {
-    return <CollapsedSidebarLink item={item} active={active} onNavigate={onNavigate} />;
+    return (
+      <CollapsedSidebarLink
+        item={item}
+        active={active}
+        onNavigate={onNavigate}
+      />
+    );
   }
 
   return (
@@ -597,13 +616,7 @@ function CollapsedSidebarLink({
   );
 }
 
-function BottomNavLink({
-  item,
-  active,
-}: {
-  item: NavItem;
-  active: boolean;
-}) {
+function BottomNavLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <Link
       href={item.href}

@@ -1,10 +1,15 @@
 ﻿# Business Logic
 
-## 1. Produksi & Pemasukan Stok
+## 1. Produksi, Pemasukan Stok & Initial Stock
 
 - Hanya **Central Pastry** yang membuat batch baru via `production_in`.
 - Outlet menerima stok melalui transfer (lihat §3).
 - Untuk **non-perishable**, stok bisa di-`entry_in` di lokasi mana pun (default ke Central Pastry).
+- Untuk **go-live / initial stock**, Super Admin bisa menggunakan halaman `/initial-stock`:
+  - Function `fn_initial_stock_entry` membuat batch baru + movement `adjustment_in` di **lokasi mana pun** (tidak terbatas central kitchen)
+  - Untuk produk **perishable**: tanggal produksi wajib diisi, expired auto-calculate dari shelf life
+  - Untuk produk **non-perishable**: tanggal produksi & expired tidak diperlukan
+  - Hanya Super Admin yang bisa mengakses — sudah di-gate via `requireSuperAdmin()` di server action
 
 Saat insert `stock_batches`:
 

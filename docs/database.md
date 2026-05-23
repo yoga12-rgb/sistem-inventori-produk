@@ -252,3 +252,17 @@ Edit qty/item transfer saat status `pending`. Rebuild items.
 ### Format kode baru
 
 `TR-[KODE_ASAL]-[KODE_TUJUAN]-[N]-YYYY-MM-DD` dengan `pg_advisory_xact_lock` untuk anti race.
+
+---
+
+## Migration `initial_stock_entry` (Iterasi 9)
+
+### `fn_initial_stock_entry(p_location_id, p_product_id, p_quantity, p_produced_at?, p_expires_at?, p_notes?)`
+
+Function baru untuk mengisi stok awal saat go-live. Tidak seperti `fn_record_production` yang hanya terbatas di Central Pastry, function ini bisa dipanggil untuk **lokasi mana pun** (outlet).
+
+- Membuat batch baru di `stock_batches` dengan `produced_at`, `expires_at` sesuai parameter
+- Log movement sebagai `adjustment_in` dengan `reference_type = 'initial_stock'`
+- Untuk produk perishable: `produced_at` wajib diisi
+- Untuk produk non-perishable: `produced_at` diisi `now()` jika null, `expires_at` selalu null
+- `security invoker` — Server Action sudah gating via `requireSuperAdmin()`

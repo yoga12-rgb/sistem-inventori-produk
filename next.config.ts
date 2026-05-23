@@ -5,8 +5,8 @@ import type { NextConfig } from "next";
  *
  * - `default-src 'self'`: semua resource default dari origin sendiri.
  * - `connect-src`: izinkan koneksi ke Supabase (REST + Realtime websocket).
- *   Wildcard `*.supabase.co` cukup untuk satu project; sengaja tidak pakai
- *   URL exact agar tidak coupled dengan env.
+ *   Saat develop dengan Supabase lokal (127.0.0.1:54321) otomatis ditambahkan
+ *   ke whitelist. Di production, hanya `*.supabase.co` yang diizinkan.
  * - `script-src`: butuh `'unsafe-inline'` untuk Next.js hydration script
  *   inline. Nonce-based CSP butuh refactor proxy.ts; ditunda.
  * - `style-src`: 'unsafe-inline' untuk style yang di-inject Tailwind.
@@ -16,9 +16,25 @@ import type { NextConfig } from "next";
  *
  * Catatan: laporan CSP violation tidak di-collect (perlu Sentry/server).
  */
+
+/** Supabase URLs yang perlu di-allow di connect-src */
+function getSupabaseConnectSrc(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  // Selalu izinkan *.supabase.co untuk production
+  const src = ["'self'", "https://*.supabase.co", "wss://*.supabase.co"];
+
+  // Tambahkan URL lokal (127.0.0.1 / localhost) jika dipakai supabase lokal
+  if (url.includes("127.0.0.1") || url.includes("localhost")) {
+    const wsUrl = url.replace(/^http/, "ws");
+    src.push(url, wsUrl);
+  }
+
+  return src.join(" ");
+}
+
 const csp = [
   "default-src 'self'",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+  `connect-src ${getSupabaseConnectSrc()}`,
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",

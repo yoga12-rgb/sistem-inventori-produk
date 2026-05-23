@@ -10,6 +10,19 @@ export type StockEntryFormState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Partial<
-    Record<"product_id" | "location_id" | "quantity" | "entered_at" | "notes", string>
+    Record<
+      "product_id" | "location_id" | "quantity" | "entered_at" | "notes",
+      string
+    >
   >;
+};
+
+export type EditProductionState = {
+  ok: boolean;
+  message?: string;
+};
+
+export type VoidProductionState = {
+  ok: boolean;
+  message?: string;
 };

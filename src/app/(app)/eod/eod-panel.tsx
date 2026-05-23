@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +48,16 @@ type EodReport = {
   stock_now: StockItem[];
 };
 
+type TransferLine = {
+  code: string;
+  product_name: string;
+  quantity: number;
+  unit: string;
+  from_name: string;
+  to_name: string;
+  status: string;
+};
+
 const DISPOSAL_ORDER: DisposalCategory[] = [
   "expired",
   "compliment",
@@ -72,6 +82,7 @@ const DISPOSAL_EMOJI: Record<DisposalCategory, string> = {
 };
 
 const DATE_FILTER_KEY = "eod-panel:date";
+const TRANSFER_TOGGLE_KEY = "eod-panel:include-transfer";
 
 function todayLocalIso(): string {
   const d = new Date();
@@ -80,7 +91,6 @@ function todayLocalIso(): string {
 }
 
 function formatBatchDate(iso: string): string {
-  // iso = "YYYY-MM-DD" — render sebagai "DD MMM"
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return iso;
   const date = new Date(y, m - 1, d);
@@ -97,16 +107,53 @@ function formatDateLong(iso: string): string {
   });
 }
 
-function buildEodText(
+/**
+ * Buat map product_id → category_sort dari master data.
+ * Produk tanpa kategori diberi sort = 999 agar muncul paling akhir.
+ */
+function buildProductSortMap(
+  products: Array<{ id: string; category_id: string | null }>,
+  categories: Array<{ id: string; sort: number }>,
+): Map<string, number> {
+  const catSort = new Map<string, number>();
+  for (const c of categories) catSort.set(c.id, c.sort);
+
+  const result = new Map<string, number>();
+  for (const p of products) {
+    result.set(p.id, p.category_id ? (catSort.get(p.category_id) ?? 999) : 999);
+  }
+  return result;
+}
+
+function buildWaText(
   outletName: string,
   date: string,
   data: EodReport,
+  transfers: TransferLine[],
+  includeTransfer: boolean,
+  master: ReturnType<typeof useMasterData>,
 ): string {
-  const header = `📊 EOD ${outletName} — ${formatDateLong(date)}`;
+  const header = `Laporan Stock Abon Gulung Outlet ${outletName}`;
+  const dateLine = formatDateLong(date);
 
+  // Urut berdasarkan kategori sort, lalu nama produk
+  const productSort = buildProductSortMap(master.products, master.categories);
+  const sortFn = (a: { product_id: string; name: string }) => {
+    const cat = productSort.get(a.product_id) ?? 999;
+    return `${String(cat).padStart(3, "0")}-${a.name}`;
+  };
+
+  const sortedSold = [...data.sold].sort((a, b) =>
+    sortFn(a).localeCompare(sortFn(b)),
+  );
+  const sortedStock = [...data.stock_now].sort((a, b) =>
+    sortFn(a).localeCompare(sortFn(b)),
+  );
+
+  // ── STOCK TERJUAL ──
   const soldLines =
-    data.sold.length > 0
-      ? data.sold
+    sortedSold.length > 0
+      ? sortedSold
           .map(
             (s) =>
               `✅ ${s.name} : ${formatNumber(Number(s.quantity))} ${s.unit}`,
@@ -114,9 +161,17 @@ function buildEodText(
           .join("\n")
       : "Tidak ada transaksi.";
 
+  const totalSoldQty = sortedSold.reduce(
+    (sum, s) => sum + Number(s.quantity),
+    0,
+  );
+  const totalUnit = sortedSold.length > 0 ? sortedSold[0].unit : "pcs";
+  const totalLine = `Total : (${formatNumber(totalSoldQty)} ${totalUnit})`;
+
+  // ── STOCK UPDATE ──
   const stockLines =
-    data.stock_now.length > 0
-      ? data.stock_now
+    sortedStock.length > 0
+      ? sortedStock
           .map((s) => {
             const head = `✅ ${s.name} : ${formatNumber(Number(s.total))} ${s.unit}`;
             const sub = s.batches
@@ -130,12 +185,13 @@ function buildEodText(
           .join("\n")
       : "Stok kosong.";
 
-  const disposalEntries = DISPOSAL_ORDER.flatMap<[DisposalCategory, DisposalItem[]]>(
-    (cat) => {
-      const items = data.disposal?.[cat];
-      return items && items.length > 0 ? [[cat, items]] : [];
-    },
-  );
+  // ── DISPOSAL ──
+  const disposalEntries = DISPOSAL_ORDER.flatMap<
+    [DisposalCategory, DisposalItem[]]
+  >((cat) => {
+    const items = data.disposal?.[cat];
+    return items && items.length > 0 ? [[cat, items]] : [];
+  });
 
   const disposalLines =
     disposalEntries.length > 0
@@ -153,18 +209,39 @@ function buildEodText(
           .join("\n")
       : null;
 
-  const sections = [
+  // ── TRANSFER STOCK ──
+  const transferLines =
+    includeTransfer && transfers.length > 0
+      ? transfers
+          .map(
+            (t) =>
+              `✅ ${t.product_name} : ${formatNumber(Number(t.quantity))} ${t.unit} (${t.from_name} → ${t.to_name})`,
+          )
+          .join("\n")
+      : null;
+
+  // ── BUILD SECTIONS ──
+  const sections: string[] = [
     header,
+    dateLine,
     "",
-    "Terjual",
+    "‎STOCK TERJUAL:",
     soldLines,
     "",
-    "Stock Update",
+    totalLine,
+    "",
+    "‎✨ STOCK UPDATE:",
     stockLines,
   ];
+
   if (disposalLines) {
-    sections.push("", "Disposal", disposalLines);
+    sections.push("", "Disposal :", disposalLines);
   }
+
+  if (transferLines) {
+    sections.push("", "Transfer stock :", transferLines);
+  }
+
   return sections.join("\n");
 }
 
@@ -195,48 +272,133 @@ export function EodPanel({
     if (typeof window === "undefined") return todayLocalIso();
     return window.localStorage.getItem(DATE_FILTER_KEY) ?? todayLocalIso();
   });
+  const [includeTransfer, setIncludeTransfer] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(TRANSFER_TOGGLE_KEY) !== "0";
+  });
   const [report, setReport] = useState<EodReport | null>(null);
+  const [transfers, setTransfers] = useState<TransferLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
 
   const outlet = outlets.find((o) => o.id === outletId);
 
-  // Persist filter tanggal saja (outlet biasanya satu untuk kasir).
+  // Persist filter tanggal + toggle transfer
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(DATE_FILTER_KEY, date);
   }, [date]);
 
-  const loadReport = useMemo(
-    () => async () => {
-      if (!outletId || !date) return;
-      setLoading(true);
-      setError(null);
-      const { data, error } = await supabase.rpc("fn_eod_report", {
-        p_location_id: outletId,
-        p_date: date,
-      });
-      if (error) setError(error.message);
-      else
-        setReport(
-          (data as EodReport) ?? { sold: [], disposal: {}, stock_now: [] },
-        );
-      setLoading(false);
-    },
-    [supabase, outletId, date],
-  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      TRANSFER_TOGGLE_KEY,
+      includeTransfer ? "1" : "0",
+    );
+  }, [includeTransfer]);
+
+  const loadData = useCallback(async () => {
+    if (!outletId || !date) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Fetch EOD report
+      const { data: eodData, error: eodErr } = await supabase.rpc(
+        "fn_eod_report",
+        {
+          p_location_id: outletId,
+          p_date: date,
+        },
+      );
+      if (eodErr) {
+        setError(eodErr.message);
+        setLoading(false);
+        return;
+      }
+      setReport(
+        (eodData as EodReport) ?? { sold: [], disposal: {}, stock_now: [] },
+      );
+
+      // 2. Fetch transfer history — outlet ini sbg pengirim/penerima tgl tsb
+      // Catatan: Supabase FK join mengembalikan array (meski FK tunggal)
+      const { data: transferData } = await supabase
+        .from("transfers")
+        .select(
+          `
+          code,
+          status,
+          from_location:from_location_id ( name ),
+          to_location:to_location_id ( name ),
+          transfer_items (
+            quantity,
+            product:product_id ( name, unit )
+          )
+        `,
+        )
+        .or(`from_location_id.eq.${outletId},to_location_id.eq.${outletId}`)
+        .eq("status", "received")
+        .gte("created_at", `${date} 00:00:00+07`)
+        .lte("created_at", `${date} 23:59:59+07`)
+        .order("created_at", { ascending: true });
+
+      const lines: TransferLine[] = [];
+      if (transferData) {
+        const raw = transferData as Array<{
+          code: string;
+          status: string;
+          // Supabase FK join returns array even for singular FK
+          from_location: Array<{ name: string }>;
+          to_location: Array<{ name: string }>;
+          transfer_items: Array<{
+            quantity: number;
+            // FK join inside transfer_items also returns array
+            product: Array<{ name: string; unit: string }>;
+          }>;
+        }>;
+        for (const t of raw) {
+          const fromName = t.from_location?.[0]?.name ?? "";
+          const toName = t.to_location?.[0]?.name ?? "";
+          for (const item of t.transfer_items) {
+            const prod = item.product?.[0];
+            lines.push({
+              code: t.code,
+              product_name: prod?.name ?? "—",
+              quantity: Number(item.quantity),
+              unit: prod?.unit ?? "",
+              from_name: fromName,
+              to_name: toName,
+              status: t.status,
+            });
+          }
+        }
+      }
+      setTransfers(lines);
+    } catch (err) {
+      setError(String(err));
+    }
+
+    setLoading(false);
+  }, [supabase, outletId, date]);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
-    void loadReport();
+    void loadData();
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [loadReport]);
+  }, [loadData]);
 
   const text = useMemo(() => {
     if (!report || !outlet) return "";
-    return buildEodText(outlet.name, date, report);
-  }, [report, outlet, date]);
+    return buildWaText(
+      outlet.name,
+      date,
+      report,
+      transfers,
+      includeTransfer,
+      master,
+    );
+  }, [report, outlet, date, transfers, includeTransfer, master]);
 
   const disposalCount = useMemo(() => {
     if (!report?.disposal) return 0;
@@ -245,6 +407,11 @@ export function EodPanel({
       0,
     );
   }, [report]);
+
+  const totalSoldQty = useMemo(
+    () => report?.sold.reduce((sum, s) => sum + Number(s.quantity), 0) ?? 0,
+    [report],
+  );
 
   const waUrl = text ? `https://wa.me/?text=${encodeURIComponent(text)}` : "#";
 
@@ -286,11 +453,22 @@ export function EodPanel({
             className="h-10 rounded-md border border-input bg-background px-3 text-base"
           />
         </label>
-        <Button variant="outline" size="sm" onClick={() => void loadReport()}>
+        <Button variant="outline" size="sm" onClick={() => void loadData()}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Muat ulang
         </Button>
       </div>
+
+      {/* Checkbox untuk transfer stock */}
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={includeTransfer}
+          onChange={(e) => setIncludeTransfer(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+        />
+        Sertakan riwayat Transfer stock dalam laporan
+      </label>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -333,7 +511,7 @@ export function EodPanel({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>
-                Terjual{" "}
+                STOCK TERJUAL{" "}
                 <span className="text-sm font-normal text-muted-foreground">
                   ({report?.sold.length ?? 0} produk)
                 </span>
@@ -345,19 +523,25 @@ export function EodPanel({
                   Belum ada transaksi.
                 </p>
               ) : (
-                <ul className="divide-y">
-                  {report.sold.map((s) => (
-                    <li
-                      key={s.product_id}
-                      className="flex items-center justify-between py-2 text-sm"
-                    >
-                      <span>✅ {s.name}</span>
-                      <span className="font-medium tabular-nums">
-                        {formatNumber(Number(s.quantity))} {s.unit}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-2">
+                  <ul className="divide-y">
+                    {report.sold.map((s) => (
+                      <li
+                        key={s.product_id}
+                        className="flex items-center justify-between py-2 text-sm"
+                      >
+                        <span>✅ {s.name}</span>
+                        <span className="font-medium tabular-nums">
+                          {formatNumber(Number(s.quantity))} {s.unit}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="border-t pt-2 text-right text-sm font-semibold">
+                    Total : ({formatNumber(totalSoldQty)}{" "}
+                    {report.sold.length > 0 ? report.sold[0].unit : "box/pcs"})
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -431,7 +615,10 @@ export function EodPanel({
                       </div>
                       <ul className="mt-1 ml-4 space-y-0.5 text-xs text-muted-foreground">
                         {s.batches.map((b, i) => (
-                          <li key={`${b.date}-${i}`} className="flex items-center justify-between">
+                          <li
+                            key={`${b.date}-${i}`}
+                            className="flex items-center justify-between"
+                          >
                             <span>Tanggal {formatBatchDate(b.date)}</span>
                             <span className="tabular-nums">
                               {formatNumber(Number(b.qty))} {s.unit}

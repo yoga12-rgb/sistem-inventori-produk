@@ -15,7 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate, formatDateTime, formatNumber, hoursBetween } from "@/lib/format";
+import {
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  hoursBetween,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
@@ -77,9 +82,21 @@ export function StockBoard({
   const categories = master.categories;
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  // Init dengan server value saja — localStorage di-sync via useEffect
+  // supaya tidak menyebabkan hydration mismatch (server vs client).
   const [locationId, setLocationId] = useState<string | "all">(
-    () => readSavedFilter()?.locationId ?? defaultLocationId ?? "all",
+    defaultLocationId ?? "all",
   );
+
+  // Sync filter dari localStorage setelah mount (client-only).
+  useEffect(() => {
+    const saved = readSavedFilter();
+    if (saved?.locationId) {
+      setLocationId(saved.locationId);
+    }
+    // Hanya sekali di mount, dependencies kosong intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [rows, setRows] = useState<StockRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,8 +183,7 @@ export function StockBoard({
             <option value="all">Semua lokasi</option>
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.code} — {l.name}{" "}
-                {l.type === "central_kitchen" ? "(CP)" : ""}
+                {l.code} — {l.name} {l.type === "central_kitchen" ? "(CP)" : ""}
               </option>
             ))}
           </Select>
@@ -293,7 +309,9 @@ export function StockBoard({
                               : undefined
                           }
                         >
-                          {r.category_icon ? <span>{r.category_icon}</span> : null}
+                          {r.category_icon ? (
+                            <span>{r.category_icon}</span>
+                          ) : null}
                           {r.category_name}
                         </span>
                       ) : (
@@ -325,14 +343,16 @@ export function StockBoard({
                           <span
                             className={cn(
                               "text-sm",
-                              isWarning && "font-medium text-warning-foreground",
+                              isWarning &&
+                                "font-medium text-warning-foreground",
                             )}
                           >
                             {formatDateTime(r.nearest_expiry)}
                           </span>
                           {isWarning && product?.expiry_discount_percent ? (
                             <Badge variant="warning">
-                              Saran diskon {Math.round(product.expiry_discount_percent)}%
+                              Saran diskon{" "}
+                              {Math.round(product.expiry_discount_percent)}%
                             </Badge>
                           ) : null}
                         </span>
@@ -433,68 +453,68 @@ function BatchListModal({
         description={`Batch aktif di ${locationLabel}`}
         className="max-w-2xl"
       >
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Memuat…</p>
-      ) : error ? (
-        <p className="text-sm text-destructive">{error}</p>
-      ) : batches.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Tidak ada batch aktif di lokasi ini.
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tgl produksi</TableHead>
-                {isPerishable ? <TableHead>Expired</TableHead> : null}
-                <TableHead className="text-right">Awal</TableHead>
-                <TableHead className="text-right">Sisa</TableHead>
-                <TableHead>Catatan</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {batches.map((b) => {
-                const isWarning =
-                  isPerishable &&
-                  b.expires_at &&
-                  hoursBetween(new Date(), b.expires_at) <= warningHours;
-                return (
-                  <TableRow key={b.id}>
-                    <TableCell className="text-sm">
-                      {formatDateTime(b.produced_at)}
-                    </TableCell>
-                    {isPerishable ? (
-                      <TableCell
-                        className={cn(
-                          "text-sm",
-                          isWarning && "font-medium text-warning-foreground",
-                        )}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {isWarning ? (
-                            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
-                          ) : null}
-                          {formatDate(b.expires_at)}
-                        </span>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Memuat…</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : batches.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Tidak ada batch aktif di lokasi ini.
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tgl produksi</TableHead>
+                  {isPerishable ? <TableHead>Expired</TableHead> : null}
+                  <TableHead className="text-right">Awal</TableHead>
+                  <TableHead className="text-right">Sisa</TableHead>
+                  <TableHead>Catatan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {batches.map((b) => {
+                  const isWarning =
+                    isPerishable &&
+                    b.expires_at &&
+                    hoursBetween(new Date(), b.expires_at) <= warningHours;
+                  return (
+                    <TableRow key={b.id}>
+                      <TableCell className="text-sm">
+                        {formatDateTime(b.produced_at)}
                       </TableCell>
-                    ) : null}
-                    <TableCell className="text-right tabular-nums text-sm">
-                      {formatNumber(b.initial_qty)} {unit}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatNumber(b.remaining_qty)} {unit}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {b.notes ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                      {isPerishable ? (
+                        <TableCell
+                          className={cn(
+                            "text-sm",
+                            isWarning && "font-medium text-warning-foreground",
+                          )}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {isWarning ? (
+                              <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                            ) : null}
+                            {formatDate(b.expires_at)}
+                          </span>
+                        </TableCell>
+                      ) : null}
+                      <TableCell className="text-right tabular-nums text-sm">
+                        {formatNumber(b.initial_qty)} {unit}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        {formatNumber(b.remaining_qty)} {unit}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {b.notes ?? "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </Modal>
     </>
   );

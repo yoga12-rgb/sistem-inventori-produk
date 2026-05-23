@@ -1,13 +1,12 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
 /**
- * Theme toggle that avoids hydration flicker by rendering BOTH icons and
- * letting CSS (`dark:` variant) decide which is visible. `next-themes`
- * sets the `.dark` class on `<html>` before paint via its inline script.
+ * Theme toggle using custom ThemeProvider context.
+ * Renders BOTH icons and lets CSS (`dark:` variant) decide which is visible.
  */
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
