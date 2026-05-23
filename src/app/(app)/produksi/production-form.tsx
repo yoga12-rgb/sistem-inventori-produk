@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { FormField } from "@/components/ui/form-field";
-import {
-  recordProductionBatchAction,
-} from "./actions";
+import { recordProductionBatchAction } from "./actions";
 import type { ProductionFormState } from "./state";
 
 type Product = {
@@ -48,6 +47,10 @@ function addHoursLocal(input: string, hours: number): string {
   return toLocalInput(d);
 }
 
+function isValidDateInput(value: string): boolean {
+  return Number.isFinite(new Date(value).getTime());
+}
+
 export function ProductionForm({
   products,
   centralKitchens,
@@ -67,16 +70,24 @@ export function ProductionForm({
   // counterRef hanya dibaca dari event handler / effect (tidak boleh saat render).
   const idPrefix = useId();
   const counterRef = useRef(1); // 0 dipakai row awal.
-  const nextUid = () => `${idPrefix}-${counterRef.current++}`;
-  const makeEmptyRow = (uid: string = nextUid()): LineItem => ({
-    uid,
-    product_id: "",
-    quantity: "",
-    expires_at: "",
-    expires_touched: false,
-  });
+  const nextUid = useCallback(
+    () => `${idPrefix}-${counterRef.current++}`,
+    [idPrefix],
+  );
+  const makeEmptyRow = useCallback(
+    (uid: string = nextUid()): LineItem => ({
+      uid,
+      product_id: "",
+      quantity: "",
+      expires_at: "",
+      expires_touched: false,
+    }),
+    [nextUid],
+  );
 
-  const [producedAt, setProducedAt] = useState<string>(toLocalInput(new Date()));
+  const [producedAt, setProducedAt] = useState<string>(
+    toLocalInput(new Date()),
+  );
   const [items, setItems] = useState<LineItem[]>(() => [
     {
       uid: `${idPrefix}-0`,
@@ -95,7 +106,7 @@ export function ProductionForm({
     setProducedAt(toLocalInput(new Date()));
     setItems([makeEmptyRow()]);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [state]);
+  }, [state, makeEmptyRow]);
 
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
@@ -163,7 +174,9 @@ export function ProductionForm({
 
   // Validasi per baris.
   const rowsInfo = items.map((row) => {
-    const product = row.product_id ? productById.get(row.product_id) : undefined;
+    const product = row.product_id
+      ? productById.get(row.product_id)
+      : undefined;
     const qty = Number(row.quantity);
     let error: string | null = null;
     if (!row.product_id) error = "Pilih produk";
@@ -175,6 +188,8 @@ export function ProductionForm({
       !row.expires_at
     ) {
       error = "Expiry wajib diisi (produk tanpa default shelf life)";
+    } else if (product?.is_perishable && row.expires_at) {
+      if (!isValidDateInput(row.expires_at)) error = "Expiry tidak valid";
     }
     return { product, error };
   });
@@ -198,7 +213,9 @@ export function ProductionForm({
           quantity: Number(i.quantity),
           // Hanya kirim expires_at untuk perishable. Non-perishable: null.
           expires_at:
-            product?.is_perishable && i.expires_at
+            product?.is_perishable &&
+            i.expires_at &&
+            isValidDateInput(i.expires_at)
               ? new Date(i.expires_at).toISOString()
               : null,
         };
@@ -285,21 +302,25 @@ export function ProductionForm({
                   htmlFor={`product-${row.uid}`}
                   error={info.error ?? undefined}
                 >
-                  <Select
+                  <SearchSelect
                     id={`product-${row.uid}`}
                     value={row.product_id}
+                    placeholder="Pilih produk"
+                    searchPlaceholder="Cari produk…"
                     onChange={(e) =>
                       handleProductChange(row.uid, e.currentTarget.value)
                     }
                   >
-                    <option value="">Pilih produk</option>
+                    <option value="" disabled>
+                      Pilih produk
+                    </option>
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.sku} — {p.name}{" "}
                         {p.is_perishable ? "" : "(non-perishable)"}
                       </option>
                     ))}
-                  </Select>
+                  </SearchSelect>
                 </FormField>
 
                 <FormField

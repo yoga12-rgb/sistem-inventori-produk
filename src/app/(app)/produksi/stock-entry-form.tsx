@@ -5,11 +5,10 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
-import {
-  recordStockEntryAction,
-} from "./actions";
+import { recordStockEntryAction } from "./actions";
 import type { StockEntryFormState } from "./state";
 
 type Product = { id: string; sku: string; name: string; unit: string };
@@ -36,9 +35,14 @@ export function StockEntryForm({
     initialState,
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const enteredAtRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
+    if (!state.ok) return;
+    if (enteredAtRef.current) {
+      enteredAtRef.current.defaultValue = toLocalInput(new Date());
+    }
+    formRef.current?.reset();
   }, [state]);
 
   return (
@@ -51,7 +55,14 @@ export function StockEntryForm({
           error={state.fieldErrors?.product_id}
           hint="Hanya produk non-perishable"
         >
-          <Select id="product_id" name="product_id" required defaultValue="">
+          <SearchSelect
+            id="product_id"
+            name="product_id"
+            required
+            defaultValue=""
+            placeholder="Pilih produk"
+            searchPlaceholder="Cari produk…"
+          >
             <option value="" disabled>
               Pilih produk
             </option>
@@ -60,7 +71,7 @@ export function StockEntryForm({
                 {p.sku} — {p.name}
               </option>
             ))}
-          </Select>
+          </SearchSelect>
         </FormField>
 
         <FormField
@@ -112,6 +123,7 @@ export function StockEntryForm({
             id="entered_at"
             name="entered_at"
             type="datetime-local"
+            ref={enteredAtRef}
             defaultValue={toLocalInput(new Date())}
             required
           />

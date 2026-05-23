@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,7 +24,10 @@ import {
 } from "@/components/ui/table";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { editProductionQtyAction, voidProductionAction } from "./actions";
+import type { EditProductionState, VoidProductionState } from "./state";
 
 type Location = {
   id: string;
@@ -29,7 +40,13 @@ type Row = {
   occurred_at: string;
   quantity: number;
   notes: string | null;
-  batch: { produced_at: string; expires_at: string | null } | null;
+  batch: {
+    id: string;
+    initial_qty: number;
+    remaining_qty: number;
+    produced_at: string;
+    expires_at: string | null;
+  } | null;
   product: {
     sku: string;
     name: string;
@@ -85,8 +102,6 @@ function formatHumanDate(iso: string): string {
 
 /**
  * Hitung rentang [start, end) UTC untuk suatu tanggal lokal Asia/Jakarta.
- * Kita pakai offset string `+07:00` agar Postgres menerima literal tanpa
- * ambiguitas DST (Indonesia memang tidak DST, tapi format ini eksplisit).
  */
 function dayRangeIso(date: string): { start: string; end: string } {
   const start = new Date(`${date}T00:00:00+07:00`);
@@ -95,6 +110,244 @@ function dayRangeIso(date: string): { start: string; end: string } {
   return { start: start.toISOString(), end: next.toISOString() };
 }
 
+// ---------- Edit Modal ------------------------------------------------
+
+function EditQtyModal({ row, onClose }: { row: Row; onClose: () => void }) {
+  const toast = useToast();
+
+  const [state, formAction, pending] = useActionState<
+    EditProductionState,
+    FormData
+  >(editProductionQtyAction, { ok: false });
+
+  // Auto-close on success (detect transition false → true)
+  const prevOkRef = useRef(state.ok);
+  useEffect(() => {
+    if (!prevOkRef.current && state.ok) {
+      toast.success("Qty produksi berhasil diubah.");
+      onClose();
+    }
+    prevOkRef.current = state.ok;
+  }, [state.ok, onClose, toast]);
+
+  const initialQty = row.batch?.initial_qty ?? row.quantity;
+
+  // Jika batch sudah habis (voided/0), jangan tampilkan form edit
+  if (row.batch && row.batch.remaining_qty <= 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Edit qty produksi</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Batch ini sudah tidak memiliki stok tersisa. Tidak dapat mengubah
+            qty.
+          </p>
+          <div className="mt-4 flex justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit qty produksi</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <p className="mb-4 text-sm text-muted-foreground">
+          {row.product?.name ?? "—"} · {row.product?.sku}
+        </p>
+
+        <form action={formAction}>
+          <input type="hidden" name="batch_id" value={row.batch?.id ?? ""} />
+
+          <label className="mb-4 flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Qty baru</span>
+            <input
+              type="number"
+              name="new_qty"
+              defaultValue={initialQty}
+              min={1}
+              step={1}
+              required
+              className="h-10 rounded-md border border-input bg-background px-3 text-base"
+            />
+            <span className="text-xs text-muted-foreground">
+              Qty saat ini: <strong>{formatNumber(initialQty)}</strong>{" "}
+              {row.product?.unit}
+            </span>
+          </label>
+
+          <label className="mb-4 flex flex-col gap-1.5">
+            <span className="text-sm font-medium">
+              Alasan <span className="text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              name="reason"
+              placeholder="Misal: salah catat"
+              maxLength={500}
+              className="h-10 rounded-md border border-input bg-background px-3 text-base"
+            />
+          </label>
+
+          {state && !state.ok && state.message ? (
+            <p className="mb-3 text-sm text-destructive">{state.message}</p>
+          ) : null}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Delete Confirmation Modal ----------------------------------
+
+function VoidProductionModal({
+  row,
+  onClose,
+}: {
+  row: Row;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+
+  const [state, formAction, pending] = useActionState<
+    VoidProductionState,
+    FormData
+  >(voidProductionAction, { ok: false });
+
+  // Auto-close on success (detect transition false → true)
+  const prevOkRef = useRef(state.ok);
+  useEffect(() => {
+    if (!prevOkRef.current && state.ok) {
+      toast.success("Produksi berhasil dihapus.");
+      onClose();
+    }
+    prevOkRef.current = state.ok;
+  }, [state.ok, onClose, toast]);
+
+  // Jika batch sudah habis (voided/0), jangan tampilkan form hapus
+  if (row.batch && row.batch.remaining_qty <= 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Hapus produksi</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Batch ini sudah dihapus sebelumnya. Tidak ada stok tersisa.
+          </p>
+          <div className="mt-4 flex justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Hapus produksi</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <p className="mb-2 text-sm">Yakin ingin menghapus produksi berikut?</p>
+        <div className="mb-4 rounded-md bg-muted p-3 text-sm">
+          <p>
+            <strong>{row.product?.name ?? "—"}</strong> · {row.product?.sku}
+          </p>
+          <p>
+            Qty: <strong>{formatNumber(row.quantity)}</strong>{" "}
+            {row.product?.unit}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Waktu: {formatDateTime(row.occurred_at)}
+          </p>
+        </div>
+
+        <form action={formAction}>
+          <input type="hidden" name="batch_id" value={row.batch?.id ?? ""} />
+
+          <label className="mb-4 flex flex-col gap-1.5">
+            <span className="text-sm font-medium">
+              Alasan <span className="text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              name="reason"
+              placeholder="Misal: produksi ganda"
+              maxLength={500}
+              className="h-10 rounded-md border border-input bg-background px-3 text-base"
+            />
+          </label>
+
+          {state && !state.ok && state.message ? (
+            <p className="mb-3 text-sm text-destructive">{state.message}</p>
+          ) : null}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Batal
+            </Button>
+            <Button type="submit" variant="destructive" disabled={pending}>
+              {pending ? "Menghapus…" : "Ya, hapus"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Main Component --------------------------------------------
+
 export function ProductionHistory({
   centralKitchens,
   defaultLocationId,
@@ -102,10 +355,6 @@ export function ProductionHistory({
 }: {
   centralKitchens: Location[];
   defaultLocationId: string | null;
-  /**
-   * Saat false (mis. tab tidak aktif), komponen tidak melakukan fetch
-   * maupun subscribe realtime — menghemat bandwidth Supabase.
-   */
   active?: boolean;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -121,6 +370,10 @@ export function ProductionHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+
+  // Modal state
+  const [editTarget, setEditTarget] = useState<Row | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Row | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -140,7 +393,7 @@ export function ProductionHistory({
       .select(
         `
           id, occurred_at, quantity, notes,
-          batch:stock_batches!stock_movements_batch_id_fkey(produced_at, expires_at),
+          batch:stock_batches!stock_movements_batch_id_fkey(id, initial_qty, remaining_qty, produced_at, expires_at),
           product:products(sku, name, unit, is_perishable),
           location:locations(id, code, name),
           actor:profiles(full_name)
@@ -166,30 +419,26 @@ export function ProductionHistory({
       setLoading(false);
       return;
     }
-    setRows(((data ?? []) as unknown as Row[]) ?? []);
+
+    setRows((data ?? []) as unknown as Row[]);
     setLoading(false);
   }, [supabase, date, locationId, centralKitchens]);
 
-  // Fetch hanya saat tab aktif. Saat tab di-non-aktifkan, kita berhenti
-  // memuat ulang.
   useEffect(() => {
     if (!active) return;
-    /* eslint-disable react-hooks/set-state-in-effect */
-    void refresh();
-    /* eslint-enable react-hooks/set-state-in-effect */
+    const timer = setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [active, refresh]);
 
-  // Realtime: subscribe HANYA saat tab aktif. Filter di server-side
-  // (movement_type=production_in) supaya event lain tidak ditarik.
-  // Refetch di-debounce 500ms supaya insert beruntun (mis. multi-batch
-  // produksi) hanya memicu satu request.
+  // Realtime subscribe
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const debouncedRefetch = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        // Tandai stale, refetch ringan tanpa loading spinner penuh.
         setStale(true);
         void refresh();
       }, 500);
@@ -215,10 +464,12 @@ export function ProductionHistory({
     };
   }, [supabase, active, refresh]);
 
-  const totalQty = rows.reduce((sum, r) => sum + Number(r.quantity || 0), 0);
-  const productCount = new Set(
-    rows.map((r) => r.product?.sku).filter(Boolean),
-  ).size;
+  const totalQty = rows.reduce(
+    (sum, r) => sum + Number(r.batch?.initial_qty ?? r.quantity ?? 0),
+    0,
+  );
+  const productCount = new Set(rows.map((r) => r.product?.sku).filter(Boolean))
+    .size;
 
   return (
     <div className="space-y-4">
@@ -284,10 +535,7 @@ export function ProductionHistory({
 
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw
-            className={cn(
-              "h-4 w-4",
-              (loading || stale) && "animate-spin",
-            )}
+            className={cn("h-4 w-4", (loading || stale) && "animate-spin")}
           />
           {stale ? "Sinkron…" : "Muat ulang"}
         </Button>
@@ -310,12 +558,13 @@ export function ProductionHistory({
               <TableHead>Kedaluwarsa</TableHead>
               <TableHead>Aktor</TableHead>
               <TableHead>Catatan</TableHead>
+              <TableHead className="w-20">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {!loading && rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10">
+                <TableCell colSpan={8} className="py-10">
                   <EmptyState
                     title="Belum ada produksi"
                     description="Tidak ada batch yang diproduksi pada filter ini. Coba tanggal lain atau ganti lokasi."
@@ -333,10 +582,7 @@ export function ProductionHistory({
                     <div className="font-mono text-xs text-muted-foreground">
                       {r.product?.sku}
                       {r.product?.is_perishable ? (
-                        <Badge
-                          variant="warning"
-                          className="ml-2 align-middle"
-                        >
+                        <Badge variant="warning" className="ml-2 align-middle">
                           Perishable
                         </Badge>
                       ) : null}
@@ -355,7 +601,7 @@ export function ProductionHistory({
                     )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-medium">
-                    {formatNumber(Number(r.quantity))}{" "}
+                    {formatNumber(Number(r.batch?.initial_qty ?? r.quantity))}{" "}
                     <span className="text-xs text-muted-foreground">
                       {r.product?.unit}
                     </span>
@@ -370,6 +616,26 @@ export function ProductionHistory({
                   </TableCell>
                   <TableCell className="max-w-xs text-xs text-muted-foreground line-clamp-1">
                     {r.notes ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title="Edit qty"
+                        onClick={() => setEditTarget(r)}
+                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Hapus produksi"
+                        onClick={() => setVoidTarget(r)}
+                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -396,6 +662,26 @@ export function ProductionHistory({
           </span>
         </div>
       ) : null}
+
+      {/* Modals */}
+      {editTarget && (
+        <EditQtyModal
+          row={editTarget}
+          onClose={() => {
+            setEditTarget(null);
+            void refresh();
+          }}
+        />
+      )}
+      {voidTarget && (
+        <VoidProductionModal
+          row={voidTarget}
+          onClose={() => {
+            setVoidTarget(null);
+            void refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

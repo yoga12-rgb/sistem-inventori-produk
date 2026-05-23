@@ -121,6 +121,24 @@ Konsumen memanggil `useMasterData()` untuk akses O(1) via `productById`, `catego
 
 Halaman dapat "mendaftarkan" tombol aksi (misal "Tambah Produk", "Buat Transfer") yang muncul di header/top bar AppShell, bukan di dalam konten halaman. Komponen `RegisterPageAction` menggunakan React context untuk slot outlet.
 
+### Pola Tabel Viewport
+
+Halaman list/audit/master-data menggunakan pola tabel viewport lewat
+`src/components/viewport-table.tsx`.
+
+- Filter berada di atas tabel dan sticky.
+- Panel tabel memiliki tinggi terkunci terhadap viewport; scroll utama terjadi
+  di dalam panel tabel, bukan halaman penuh.
+- Header tabel sticky di dalam panel scroll.
+- Row dirender lazy sesuai tinggi viewport tabel, lalu ditambah bertahap saat
+  user scroll ke bawah (infinite scroll internal).
+- Tombol aksi halaman tetap memakai `RegisterPageAction` di topbar AppShell,
+  bukan ditaruh di bar filter.
+
+Pola ini dipakai di Activity Log Explorer dan halaman Master Data (Outlet,
+Kategori, Produk, Pengguna) agar tabel panjang tetap ringan dan nyaman di
+tablet kasir/admin.
+
 ## Realtime
 
 - Tabel yang berperan dalam UI live dipublikasikan ke `supabase_realtime`:
