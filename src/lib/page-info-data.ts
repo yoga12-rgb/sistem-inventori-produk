@@ -47,6 +47,30 @@ const EXACT: Record<string, PageInfoEntry> = {
     tips: ["Setiap halaman punya ikon ⓘ di top bar untuk panduan cepat."],
   },
 
+  "/tentang": {
+    eyebrow: "Informasi",
+    title: "Tentang Aplikasi",
+    summary:
+      "Tujuan pembuatan Sistem Inventaris Produk dan cakupan fitur operasionalnya.",
+    features: [
+      {
+        title: "Tujuan aplikasi",
+        desc: "Menata alur stok dari produksi, transfer, penjualan, disposal, sampai audit aktivitas.",
+      },
+      {
+        title: "Akses semua user",
+        desc: "Halaman ini tersedia untuk semua role yang bisa login ke aplikasi.",
+      },
+      {
+        title: "Kredit",
+        desc: "Memuat kredit Yoga Septriana sebagai pemilik/pengembang ide aplikasi.",
+      },
+    ],
+    tips: [
+      "Gunakan halaman ini sebagai ringkasan singkat saat mengenalkan aplikasi ke user baru.",
+    ],
+  },
+
   "/stok": {
     eyebrow: "Operasional",
     title: "Stok",

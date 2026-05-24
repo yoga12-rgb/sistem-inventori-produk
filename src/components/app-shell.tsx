@@ -13,6 +13,7 @@ import {
   FileText,
   FolderTree,
   Grid3x3,
+  Info,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -64,6 +65,7 @@ const NAV: NavItem[] = [
   { href: "/penjualan", label: "Penjualan", icon: Receipt, bottomBar: true },
   { href: "/eod", label: "Laporan WA", icon: FileText },
   { href: "/matrix", label: "Inventory Matrix", icon: Grid3x3 },
+  { href: "/tentang", label: "Tentang", icon: Info },
   {
     href: "/aktivitas",
     label: "Aktivitas",
@@ -138,13 +140,17 @@ export function AppShell({
   // Hydration-safe: baca localStorage setelah mount agar server & client
   // render first-pass dengan nilai yang sama (false).
   useEffect(() => {
+    let timer: number | null = null;
     try {
       if (window.localStorage.getItem("sidebar:collapsed") === "1") {
-        setSidebarCollapsed(true);
+        timer = window.setTimeout(() => setSidebarCollapsed(true), 0);
       }
     } catch {
       /* ignore */
     }
+    return () => {
+      if (timer != null) window.clearTimeout(timer);
+    };
   }, []);
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
