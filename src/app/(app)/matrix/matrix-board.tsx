@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -52,6 +51,11 @@ type MatrixRow = {
 };
 
 const FILTER_KEY = "inventory-matrix:filters";
+const ESTIMATED_ROW_HEIGHT = 69;
+const MIN_PAGE_SIZE = 8;
+const OVERSCAN_ROWS = 4;
+const stickyHeadClass =
+  "sticky top-0 z-10 bg-card shadow-[0_1px_0_var(--border)]";
 
 type FilterState = { locationId: string | "all" };
 
@@ -125,7 +129,12 @@ export function MatrixBoard({
   );
   const [rows, setRows] = useState<MatrixRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState<number | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Persist filter lokasi.
   useEffect(() => {
@@ -136,31 +145,133 @@ export function MatrixBoard({
     );
   }, [locationId]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const fetchRows = useCallback(
+    async (from: number, limit: number) => {
+      const to = from + limit - 1;
+      return await supabase
+        .rpc("fn_inventory_matrix", {
+          p_date: date,
+          p_location_id: locationId === "all" ? null : locationId,
+        })
+        .range(from, to);
+    },
+    [date, locationId, supabase],
+  );
+
+  useEffect(() => {
+    const node = scrollAreaRef.current;
+    if (!node) return;
+
+    let frame: number | null = null;
+    const measure = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const visibleRows = Math.ceil(node.clientHeight / ESTIMATED_ROW_HEIGHT);
+        const next = Math.max(MIN_PAGE_SIZE, visibleRows + OVERSCAN_ROWS);
+        setPageSize((prev) => (prev === next ? prev : next));
+      });
+    };
+
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(node);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pageSize === null) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setLoading(true);
+        setRows([]);
+        setHasMore(true);
+        setError(null);
+
+        const { data, error } = await fetchRows(0, pageSize);
+        if (cancelled) return;
+        if (error) {
+          setError(error.message);
+          setLoading(false);
+          return;
+        }
+
+        const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
+        setRows(nextRows);
+        setHasMore(nextRows.length === pageSize);
+        setLoading(false);
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fetchRows, pageSize]);
+
+  const loadMore = useCallback(async () => {
+    if (pageSize === null || loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
     setError(null);
-    const { data, error } = await supabase.rpc("fn_inventory_matrix", {
-      p_date: date,
-      p_location_id: locationId === "all" ? null : locationId,
-    });
+
+    const { data, error } = await fetchRows(rows.length, pageSize);
+    if (error) {
+      setError(error.message);
+      setLoadingMore(false);
+      return;
+    }
+
+    const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
+    setRows((prev) => [...prev, ...nextRows]);
+    setHasMore(nextRows.length === pageSize);
+    setLoadingMore(false);
+  }, [fetchRows, hasMore, loading, loadingMore, pageSize, rows.length]);
+
+  const refresh = useCallback(async () => {
+    if (pageSize === null) return;
+    setLoading(true);
+    setRows([]);
+    setHasMore(true);
+    setError(null);
+
+    const { data, error } = await fetchRows(0, pageSize);
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-    setRows(((data ?? []) as MatrixRow[]) ?? []);
+
+    const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
+    setRows(nextRows);
+    setHasMore(nextRows.length === pageSize);
     setLoading(false);
-  }, [supabase, date, locationId]);
+  }, [fetchRows, pageSize]);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
-    void refresh();
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [refresh]);
+    const node = sentinelRef.current;
+    const root = scrollAreaRef.current;
+    if (!node || !root) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { root, rootMargin: "240px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="flex h-[calc(100dvh-10.5rem)] min-h-[26rem] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
+      <div className="sticky top-0 z-20 flex flex-shrink-0 flex-wrap items-end gap-3 bg-background pb-2">
         <div className="flex items-end gap-1">
           <Button
             variant="outline"
@@ -257,43 +368,75 @@ export function MatrixBoard({
         </Button>
 
         <p className="ml-auto text-xs text-muted-foreground">
-          {formatHumanDate(date)}
+          {rows.length} baris dimuat - {formatHumanDate(date)}
         </p>
       </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="flex-shrink-0 text-sm text-destructive">{error}</p>
+      ) : null}
 
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produk</TableHead>
-              <TableHead>Lokasi</TableHead>
-              <TableHead className="text-right">Stok awal</TableHead>
-              <TableHead className="text-right">Masuk</TableHead>
-              <TableHead className="text-right">Transfer in</TableHead>
-              <TableHead className="text-right">Transfer out</TableHead>
-              <TableHead className="text-right">Terjual</TableHead>
-              <TableHead className="text-right">Expired</TableHead>
-              <TableHead className="text-right">Compliment</TableHead>
-              <TableHead className="text-right">Tester</TableHead>
-              <TableHead className="text-right">Rusak</TableHead>
-              <TableHead className="text-right">Stok akhir</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {!loading && rows.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
+        <div ref={scrollAreaRef} className="h-full overflow-auto">
+          <table className="w-full min-w-[76rem] caption-bottom text-sm">
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={12} className="py-10">
-                  <EmptyState
-                    title="Tidak ada aktivitas"
-                    description="Belum ada stok atau movement untuk filter ini. Coba tanggal lain atau lokasi lain."
-                  />
-                </TableCell>
+                <TableHead className={stickyHeadClass}>Produk</TableHead>
+                <TableHead className={stickyHeadClass}>Lokasi</TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Stok awal
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Masuk
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Transfer in
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Transfer out
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Terjual
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Expired
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Compliment
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Tester
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Rusak
+                </TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Stok akhir
+                </TableHead>
               </TableRow>
-            ) : (
-              rows.map((r) => {
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={12} className="py-4">
+                      <div className="h-5 animate-pulse rounded bg-muted" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={12} className="py-10">
+                    <EmptyState
+                      title="Tidak ada aktivitas"
+                      description="Belum ada stok atau movement untuk filter ini. Coba tanggal lain atau lokasi lain."
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r) => {
                 const incoming = r.produced_in + r.entered_in + r.adjustment_in;
+                const locationLabel = `${r.location_code} - ${r.location_name}`;
                 return (
                   <TableRow key={`${r.product_id}-${r.location_id}`}>
                     <TableCell>
@@ -327,7 +470,7 @@ export function MatrixBoard({
                       date={date}
                       kind="in"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                       breakdown={[
                         { label: "Produksi", value: r.produced_in },
                         { label: "Stok masuk", value: r.entered_in },
@@ -342,7 +485,7 @@ export function MatrixBoard({
                       date={date}
                       kind="transfer_in"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.transfer_out}
@@ -352,7 +495,7 @@ export function MatrixBoard({
                       date={date}
                       kind="transfer_out"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.sold}
@@ -362,7 +505,7 @@ export function MatrixBoard({
                       date={date}
                       kind="sold"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.expired_out}
@@ -372,7 +515,7 @@ export function MatrixBoard({
                       date={date}
                       kind="expired"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.compliment_out}
@@ -382,7 +525,7 @@ export function MatrixBoard({
                       date={date}
                       kind="compliment"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.tester_out}
@@ -392,7 +535,7 @@ export function MatrixBoard({
                       date={date}
                       kind="tester"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <Cell
                       value={r.damage_out}
@@ -402,7 +545,7 @@ export function MatrixBoard({
                       date={date}
                       kind="damage"
                       productName={r.product_name}
-                      locationLabel={`${r.location_code} — ${r.location_name}`}
+                      locationLabel={locationLabel}
                     />
                     <CellNumeric
                       value={r.closing}
@@ -413,8 +556,20 @@ export function MatrixBoard({
                 );
               })
             )}
-          </TableBody>
-        </Table>
+            </TableBody>
+          </table>
+
+          <div ref={sentinelRef} className="h-6" />
+          {!loading && rows.length > 0 ? (
+            <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
+              {loadingMore
+                ? "Memuat baris berikutnya..."
+                : hasMore
+                  ? "Gulir tabel untuk memuat lagi"
+                  : "Semua data sudah dimuat"}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

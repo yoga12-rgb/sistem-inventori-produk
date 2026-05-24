@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,11 @@ type BatchRow = {
 };
 
 const FILTER_KEY = "stock-board:filters";
+const ESTIMATED_ROW_HEIGHT = 73;
+const MIN_PAGE_SIZE = 8;
+const OVERSCAN_ROWS = 4;
+const stickyHeadClass =
+  "sticky top-0 z-10 bg-card shadow-[0_1px_0_var(--border)]";
 
 type FilterState = { locationId: string | "all" };
 
@@ -91,16 +96,21 @@ export function StockBoard({
   // Sync filter dari localStorage setelah mount (client-only).
   useEffect(() => {
     const saved = readSavedFilter();
-    if (saved?.locationId) {
+    if (!saved?.locationId) return;
+    const timer = window.setTimeout(() => {
       setLocationId(saved.locationId);
-    }
-    // Hanya sekali di mount, dependencies kosong intentional.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [rows, setRows] = useState<StockRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState<number | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Persist filter.
   useEffect(() => {
@@ -111,33 +121,142 @@ export function StockBoard({
     );
   }, [locationId]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    let query = supabase
-      .from("v_stock_per_location")
-      .select(
-        "product_id, sku, product_name, unit, is_perishable, category_id, category_name, category_icon, category_color, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
-      )
-      .order("product_name", { ascending: true });
-    if (locationId !== "all") query = query.eq("location_id", locationId);
+  const fetchRows = useCallback(
+    async (from: number, limit: number) => {
+      const to = from + limit - 1;
+      let query = supabase
+        .from("v_stock_per_location")
+        .select(
+          "product_id, sku, product_name, unit, is_perishable, category_id, category_name, category_icon, category_color, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
+        )
+        .order("product_name", { ascending: true })
+        .order("sku", { ascending: true })
+        .order("location_code", { ascending: true })
+        .range(from, to);
 
-    const { data, error } = await query;
+      if (locationId !== "all") query = query.eq("location_id", locationId);
+      if (categoryFilter === "none") query = query.is("category_id", null);
+      else if (categoryFilter !== "all") {
+        query = query.eq("category_id", categoryFilter);
+      }
+
+      return await query;
+    },
+    [categoryFilter, locationId, supabase],
+  );
+
+  useEffect(() => {
+    const node = scrollAreaRef.current;
+    if (!node) return;
+
+    let frame: number | null = null;
+    const measure = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const visibleRows = Math.ceil(node.clientHeight / ESTIMATED_ROW_HEIGHT);
+        const next = Math.max(MIN_PAGE_SIZE, visibleRows + OVERSCAN_ROWS);
+        setPageSize((prev) => (prev === next ? prev : next));
+      });
+    };
+
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(node);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pageSize === null) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setLoading(true);
+        setRows([]);
+        setHasMore(true);
+        setError(null);
+        scrollAreaRef.current?.scrollTo({ top: 0 });
+
+        const { data, error } = await fetchRows(0, pageSize);
+        if (cancelled) return;
+        if (error) {
+          setError(error.message);
+          setLoading(false);
+          return;
+        }
+
+        const nextRows = (data ?? []) as StockRow[];
+        setRows(nextRows);
+        setHasMore(nextRows.length === pageSize);
+        setLoading(false);
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fetchRows, pageSize]);
+
+  const loadMore = useCallback(async () => {
+    if (pageSize === null || loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
+    setError(null);
+
+    const { data, error } = await fetchRows(rows.length, pageSize);
+    if (error) {
+      setError(error.message);
+      setLoadingMore(false);
+      return;
+    }
+
+    const nextRows = (data ?? []) as StockRow[];
+    setRows((prev) => [...prev, ...nextRows]);
+    setHasMore(nextRows.length === pageSize);
+    setLoadingMore(false);
+  }, [fetchRows, hasMore, loading, loadingMore, pageSize, rows.length]);
+
+  const refresh = useCallback(async () => {
+    if (pageSize === null) return;
+    setLoading(true);
+    setRows([]);
+    setHasMore(true);
+    setError(null);
+    scrollAreaRef.current?.scrollTo({ top: 0 });
+
+    const { data, error } = await fetchRows(0, pageSize);
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-    setRows((data ?? []) as StockRow[]);
-    setLoading(false);
-  }, [supabase, locationId]);
 
-  // Bridge ke Supabase (sumber EXTERNAL): setState di sini intentional.
-  // Lihat https://react.dev/reference/react/useEffect#fetching-data-with-effects
+    const nextRows = (data ?? []) as StockRow[];
+    setRows(nextRows);
+    setHasMore(nextRows.length === pageSize);
+    setLoading(false);
+  }, [fetchRows, pageSize]);
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refresh();
-  }, [refresh]);
+    const node = sentinelRef.current;
+    const root = scrollAreaRef.current;
+    if (!node || !root) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { root, rootMargin: "240px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   // Realtime: any batch / movement change → re-fetch view.
   useEffect(() => {
@@ -160,17 +279,10 @@ export function StockBoard({
     };
   }, [supabase, refresh]);
 
-  const filteredRows = useMemo(() => {
-    if (categoryFilter === "all") return rows;
-    return rows.filter((r) => {
-      if (categoryFilter === "none") return r.category_id == null;
-      return r.category_id === categoryFilter;
-    });
-  }, [rows, categoryFilter]);
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="flex h-[calc(100dvh-10.5rem)] min-h-[26rem] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
+      <div className="sticky top-0 z-20 flex flex-shrink-0 flex-col gap-3 bg-background pb-2">
+        <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Lokasi</span>
           <Select
@@ -192,6 +304,9 @@ export function StockBoard({
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Muat ulang
         </Button>
+        <p className="ml-auto text-xs text-muted-foreground">
+          {rows.length} produk dimuat
+        </p>
       </div>
 
       {/* Filter kategori */}
@@ -253,24 +368,42 @@ export function StockBoard({
           </button>
         </div>
       ) : null}
+      </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="flex-shrink-0 text-sm text-destructive">{error}</p>
+      ) : null}
 
-      <div className="rounded-xl border bg-card">
-        <Table>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
+        <div ref={scrollAreaRef} className="h-full overflow-auto">
+          <table className="w-full min-w-[68rem] caption-bottom text-sm">
           <TableHeader>
             <TableRow>
-              <TableHead>Produk</TableHead>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Lokasi</TableHead>
-              <TableHead className="text-right">Total stok</TableHead>
-              <TableHead className="text-right">Batch</TableHead>
-              <TableHead>Expired terdekat</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
+              <TableHead className={stickyHeadClass}>Produk</TableHead>
+              <TableHead className={stickyHeadClass}>Kategori</TableHead>
+              <TableHead className={stickyHeadClass}>Lokasi</TableHead>
+              <TableHead className={cn(stickyHeadClass, "text-right")}>
+                Total stok
+              </TableHead>
+              <TableHead className={cn(stickyHeadClass, "text-right")}>
+                Batch
+              </TableHead>
+              <TableHead className={stickyHeadClass}>Expired terdekat</TableHead>
+              <TableHead className={cn(stickyHeadClass, "text-right")}>
+                Aksi
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!loading && filteredRows.length === 0 ? (
+            {loading ? (
+              Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={7} className="py-4">
+                    <div className="h-5 animate-pulse rounded bg-muted" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10">
                   <EmptyState
@@ -280,7 +413,7 @@ export function StockBoard({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredRows.map((r) => {
+              rows.map((r) => {
                 const product = master.productById.get(r.product_id);
                 const warningHours = product?.expiry_warning_hours ?? 24;
                 const isWarning =
@@ -386,7 +519,19 @@ export function StockBoard({
               })
             )}
           </TableBody>
-        </Table>
+          </table>
+
+          <div ref={sentinelRef} className="h-6" />
+          {!loading && rows.length > 0 ? (
+            <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
+              {loadingMore
+                ? "Memuat produk berikutnya..."
+                : hasMore
+                  ? "Gulir tabel untuk memuat lagi"
+                  : "Semua data sudah dimuat"}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

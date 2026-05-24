@@ -24,8 +24,7 @@ export default async function StokPage() {
   }
 
   // Default: outlet kasir kalau ada, kalau tidak — semua.
-  const defaultLocationId =
-    me.profile?.outlet_id ?? locations[0]?.id ?? null;
+  const defaultLocationId = me.profile?.outlet_id ?? locations[0]?.id ?? null;
 
   return (
     <div className="space-y-6">

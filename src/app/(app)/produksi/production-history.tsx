@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -59,6 +58,11 @@ type Row = {
 
 const FILTER_KEY = "production-history:filters";
 const TZ = "Asia/Jakarta";
+const ESTIMATED_ROW_HEIGHT = 73;
+const MIN_PAGE_SIZE = 8;
+const OVERSCAN_ROWS = 4;
+const stickyHeadClass =
+  "sticky top-0 z-10 bg-card shadow-[0_1px_0_var(--border)]";
 
 type FilterState = { locationId: string | "all" };
 
@@ -368,8 +372,13 @@ export function ProductionHistory({
   );
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const [pageSize, setPageSize] = useState<number | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Modal state
   const [editTarget, setEditTarget] = useState<Row | null>(null);
@@ -383,54 +392,157 @@ export function ProductionHistory({
     );
   }, [locationId]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setStale(false);
-    const { start, end } = dayRangeIso(date);
-    let query = supabase
-      .from("stock_movements")
-      .select(
-        `
-          id, occurred_at, quantity, notes,
-          batch:stock_batches!stock_movements_batch_id_fkey(id, initial_qty, remaining_qty, produced_at, expires_at),
-          product:products(sku, name, unit, is_perishable),
-          location:locations(id, code, name),
-          actor:profiles(full_name)
-        `,
-      )
-      .eq("movement_type", "production_in")
-      .gte("occurred_at", start)
-      .lt("occurred_at", end)
-      .order("occurred_at", { ascending: false });
+  const fetchRows = useCallback(
+    async (from: number, limit: number) => {
+      const to = from + limit - 1;
+      const { start, end } = dayRangeIso(date);
+      let query = supabase
+        .from("stock_movements")
+        .select(
+          `
+            id, occurred_at, quantity, notes,
+            batch:stock_batches!stock_movements_batch_id_fkey(id, initial_qty, remaining_qty, produced_at, expires_at),
+            product:products(sku, name, unit, is_perishable),
+            location:locations(id, code, name),
+            actor:profiles(full_name)
+          `,
+        )
+        .eq("movement_type", "production_in")
+        .gte("occurred_at", start)
+        .lt("occurred_at", end)
+        .order("occurred_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
 
-    if (locationId !== "all") {
-      query = query.eq("location_id", locationId);
-    } else if (centralKitchens.length > 0) {
-      query = query.in(
-        "location_id",
-        centralKitchens.map((l) => l.id),
-      );
+      if (locationId !== "all") {
+        query = query.eq("location_id", locationId);
+      } else if (centralKitchens.length > 0) {
+        query = query.in(
+          "location_id",
+          centralKitchens.map((l) => l.id),
+        );
+      }
+
+      return await query;
+    },
+    [centralKitchens, date, locationId, supabase],
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    const node = scrollAreaRef.current;
+    if (!node) return;
+
+    let frame: number | null = null;
+    const measure = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const visibleRows = Math.ceil(node.clientHeight / ESTIMATED_ROW_HEIGHT);
+        const next = Math.max(MIN_PAGE_SIZE, visibleRows + OVERSCAN_ROWS);
+        setPageSize((prev) => (prev === next ? prev : next));
+      });
+    };
+
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(node);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || pageSize === null) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setLoading(true);
+        setRows([]);
+        setHasMore(true);
+        setError(null);
+        setStale(false);
+        scrollAreaRef.current?.scrollTo({ top: 0 });
+
+        const { data, error } = await fetchRows(0, pageSize);
+        if (cancelled) return;
+        if (error) {
+          setError(error.message);
+          setLoading(false);
+          return;
+        }
+
+        const nextRows = (data ?? []) as unknown as Row[];
+        setRows(nextRows);
+        setHasMore(nextRows.length === pageSize);
+        setLoading(false);
+      })();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [active, fetchRows, pageSize]);
+
+  const loadMore = useCallback(async () => {
+    if (pageSize === null || loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
+    setError(null);
+
+    const { data, error } = await fetchRows(rows.length, pageSize);
+    if (error) {
+      setError(error.message);
+      setLoadingMore(false);
+      return;
     }
 
-    const { data, error } = await query;
+    const nextRows = (data ?? []) as unknown as Row[];
+    setRows((prev) => [...prev, ...nextRows]);
+    setHasMore(nextRows.length === pageSize);
+    setLoadingMore(false);
+  }, [fetchRows, hasMore, loading, loadingMore, pageSize, rows.length]);
+
+  const refresh = useCallback(async () => {
+    if (!active || pageSize === null) return;
+    setLoading(true);
+    setRows([]);
+    setHasMore(true);
+    setError(null);
+    setStale(false);
+    scrollAreaRef.current?.scrollTo({ top: 0 });
+
+    const { data, error } = await fetchRows(0, pageSize);
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
 
-    setRows((data ?? []) as unknown as Row[]);
+    const nextRows = (data ?? []) as unknown as Row[];
+    setRows(nextRows);
+    setHasMore(nextRows.length === pageSize);
     setLoading(false);
-  }, [supabase, date, locationId, centralKitchens]);
+  }, [active, fetchRows, pageSize]);
 
   useEffect(() => {
-    if (!active) return;
-    const timer = setTimeout(() => {
-      void refresh();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [active, refresh]);
+    const node = sentinelRef.current;
+    const root = scrollAreaRef.current;
+    if (!node || !root) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { root, rootMargin: "240px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   // Realtime subscribe
   useEffect(() => {
@@ -472,8 +584,8 @@ export function ProductionHistory({
     .size;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="flex h-[calc(100dvh-21.5rem)] min-h-[24rem] flex-col gap-4 lg:h-[calc(100dvh-19rem)]">
+      <div className="sticky top-0 z-20 flex flex-shrink-0 flex-wrap items-end gap-3 bg-card pb-2">
         <div className="flex items-end gap-1">
           <Button
             variant="outline"
@@ -541,28 +653,43 @@ export function ProductionHistory({
         </Button>
 
         <p className="ml-auto text-xs text-muted-foreground">
-          {formatHumanDate(date)} · TZ {TZ}
+          {rows.length} batch dimuat - {formatHumanDate(date)} - TZ {TZ}
         </p>
       </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="flex-shrink-0 text-sm text-destructive">{error}</p>
+      ) : null}
 
-      <div className="rounded-xl border bg-card">
-        <Table>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
+        <div ref={scrollAreaRef} className="h-full overflow-auto">
+          <table className="w-full min-w-[68rem] caption-bottom text-sm">
           <TableHeader>
             <TableRow>
-              <TableHead>Waktu</TableHead>
-              <TableHead>Produk</TableHead>
-              <TableHead>Lokasi</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead>Kedaluwarsa</TableHead>
-              <TableHead>Aktor</TableHead>
-              <TableHead>Catatan</TableHead>
-              <TableHead className="w-20">Aksi</TableHead>
+              <TableHead className={stickyHeadClass}>Waktu</TableHead>
+              <TableHead className={stickyHeadClass}>Produk</TableHead>
+              <TableHead className={stickyHeadClass}>Lokasi</TableHead>
+              <TableHead className={cn(stickyHeadClass, "text-right")}>
+                Qty
+              </TableHead>
+              <TableHead className={stickyHeadClass}>Kedaluwarsa</TableHead>
+              <TableHead className={stickyHeadClass}>Aktor</TableHead>
+              <TableHead className={stickyHeadClass}>Catatan</TableHead>
+              <TableHead className={cn(stickyHeadClass, "w-20")}>
+                Aksi
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!loading && rows.length === 0 ? (
+            {loading ? (
+              Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={8} className="py-4">
+                    <div className="h-5 animate-pulse rounded bg-muted" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="py-10">
                   <EmptyState
@@ -641,11 +768,23 @@ export function ProductionHistory({
               ))
             )}
           </TableBody>
-        </Table>
+          </table>
+
+          <div ref={sentinelRef} className="h-6" />
+          {!loading && rows.length > 0 ? (
+            <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
+              {loadingMore
+                ? "Memuat produksi berikutnya..."
+                : hasMore
+                  ? "Gulir tabel untuk memuat lagi"
+                  : "Semua data sudah dimuat"}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {!loading && rows.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span>
             <strong className="text-foreground">{rows.length}</strong> batch
           </span>

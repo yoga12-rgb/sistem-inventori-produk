@@ -223,8 +223,8 @@ export function ProductionForm({
   );
 
   return (
-    <form ref={formRef} action={action} className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <form ref={formRef} action={action} className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="grid flex-shrink-0 gap-4 sm:grid-cols-2">
         <FormField
           label="Lokasi"
           htmlFor="location_id"
@@ -264,8 +264,8 @@ export function ProductionForm({
         </FormField>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex flex-shrink-0 items-center justify-between">
           <h3 className="text-sm font-semibold">Item</h3>
           <Button
             type="button"
@@ -279,7 +279,7 @@ export function ProductionForm({
           </Button>
         </div>
 
-        <div className="space-y-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {items.map((row, idx) => {
             const info = rowsInfo[idx];
             const product = info.product;
@@ -387,7 +387,7 @@ export function ProductionForm({
 
       {state.message ? (
         <p
-          className={`text-sm ${
+          className={`flex-shrink-0 text-sm ${
             state.ok
               ? "text-emerald-600 dark:text-emerald-400"
               : "text-destructive"
@@ -397,7 +397,7 @@ export function ProductionForm({
         </p>
       ) : null}
 
-      <div className="flex justify-end">
+      <div className="flex flex-shrink-0 justify-end">
         <Button type="submit" disabled={pending || !valid}>
           {pending ? "Menyimpan…" : `Catat ${items.length} batch`}
         </Button>

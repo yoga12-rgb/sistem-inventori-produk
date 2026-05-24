@@ -56,25 +56,31 @@ export function ProduksiTabs() {
   if (centralKitchens.length === 0) return null;
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="produksi">
-          <Sparkles className="h-4 w-4" />
-          Catat produksi
-        </TabsTrigger>
-        <TabsTrigger value="stok-masuk">
-          <Package className="h-4 w-4" />
-          Stok masuk
-        </TabsTrigger>
-        <TabsTrigger value="riwayat">
-          <History className="h-4 w-4" />
-          Riwayat produksi
-        </TabsTrigger>
-      </TabsList>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => setTab(v as TabKey)}
+      className="relative"
+    >
+      <div className="sticky top-14 z-40 -mx-4 mb-4 bg-background/95 px-4 py-2 shadow-[0_1px_0_var(--border)] backdrop-blur sm:-mx-6 sm:px-6 lg:top-16 lg:-mx-8 lg:px-8">
+        <TabsList>
+          <TabsTrigger value="produksi">
+            <Sparkles className="h-4 w-4" />
+            Catat produksi
+          </TabsTrigger>
+          <TabsTrigger value="stok-masuk">
+            <Package className="h-4 w-4" />
+            Stok masuk
+          </TabsTrigger>
+          <TabsTrigger value="riwayat">
+            <History className="h-4 w-4" />
+            Riwayat produksi
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <TabsContent value="produksi">
-        <div className="rounded-xl border bg-card p-5">
-          <div className="mb-4">
+        <div className="flex h-[calc(100dvh-13.5rem)] min-h-[28rem] flex-col rounded-xl border bg-card p-5 lg:h-[calc(100dvh-12rem)]">
+          <div className="mb-4 flex-shrink-0">
             <h2 className="text-base font-semibold">Catat produksi</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Tambah beberapa varian dalam satu submission. Untuk varian
