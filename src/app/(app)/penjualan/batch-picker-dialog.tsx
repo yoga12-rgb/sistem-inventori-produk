@@ -22,7 +22,7 @@ export type SplitDraft = {
 
 /**
  * Modal pilih distribusi batch untuk satu line cart.
- * Mode FIFO: 1 split dengan batch_id=null + qty total.
+ * Mode FEFO: 1 split dengan batch_id=null + qty total.
  * Mode Manual: n split dengan batch_id terisi & qty masing-masing.
  */
 export function BatchPickerDialog({
@@ -53,7 +53,7 @@ export function BatchPickerDialog({
     isCurrentManual ? "manual" : "fifo",
   );
 
-  // FIFO state.
+  // FEFO state.
   const initialFifoQty =
     current.length === 1 && current[0].batch_id === null
       ? current[0].quantity
@@ -125,11 +125,11 @@ export function BatchPickerDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={`Distribusi batch — ${productName}`}
-      description={`Total stok ${formatNumber(totalAvailable)} ${unit}. Pilih FIFO untuk pemotongan otomatis dari batch tertua, atau Manual untuk menentukan qty per batch.`}
+      description={`Total stok ${formatNumber(totalAvailable)} ${unit}. Pilih FEFO untuk pemotongan otomatis dari batch paling cepat expired, atau Manual untuk menentukan qty per batch.`}
       className="max-w-xl"
     >
       <div className="space-y-4">
-        {/* Toggle FIFO / Manual */}
+        {/* Toggle FEFO / Manual */}
         <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-1">
           <button
             type="button"
@@ -142,7 +142,7 @@ export function BatchPickerDialog({
             )}
           >
             <Sparkles className="h-4 w-4" />
-            Otomatis (FIFO)
+            Otomatis (FEFO)
           </button>
           <button
             type="button"
@@ -202,7 +202,7 @@ export function BatchPickerDialog({
   );
 }
 
-// --- FIFO panel -----------------------------------------------------------
+// --- FEFO panel -----------------------------------------------------------
 
 function FifoPanel({
   batches,
@@ -223,7 +223,7 @@ function FifoPanel({
   totalAvailable: number;
   valid: boolean;
 }) {
-  // Hitung simulasi pemotongan FIFO untuk preview.
+  // Hitung simulasi pemotongan FEFO untuk preview.
   const preview: { batch: BatchOption; take: number }[] = [];
   let remaining = qty;
   for (const b of batches) {
@@ -255,7 +255,7 @@ function FifoPanel({
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">
-            Sistem akan memotong dari batch tertua dulu (FIFO).
+            Sistem akan memotong dari batch paling cepat expired dulu (FEFO).
           </span>
         )}
       </label>

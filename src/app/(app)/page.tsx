@@ -201,7 +201,7 @@ export default async function DashboardPage() {
             <div className="flex-1">
               <div className="text-sm font-semibold">Catat penjualan</div>
               <div className="text-xs text-muted-foreground">
-                Multi-item, FIFO + manual override.
+                Multi-item, FEFO + manual override.
               </div>
             </div>
             <ArrowRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />

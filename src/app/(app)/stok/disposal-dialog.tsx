@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export function DisposalDialog({
   locationLabel,
   unit,
   isPerishable,
+  onSuccess,
 }: {
   productId: string;
   locationId: string;
@@ -36,6 +37,7 @@ export function DisposalDialog({
   locationLabel: string;
   unit: string;
   isPerishable: boolean;
+  onSuccess?: () => void;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [open, setOpen] = useState(false);
@@ -45,6 +47,7 @@ export function DisposalDialog({
     recordDisposalAction,
     initialState,
   );
+  const prevOkRef = useRef(state.ok);
 
   useEffect(() => {
     if (!open) return;
@@ -69,12 +72,17 @@ export function DisposalDialog({
     };
   }, [open, supabase, productId, locationId]);
 
-  // Tutup modal otomatis setelah sukses.
   useEffect(() => {
-    if (!state.ok) return;
-    const t = setTimeout(() => setOpen(false), 800);
-    return () => clearTimeout(t);
-  }, [state]);
+    if (prevOkRef.current || !state.ok) {
+      prevOkRef.current = state.ok;
+      return;
+    }
+
+    prevOkRef.current = state.ok;
+    onSuccess?.();
+    const timer = setTimeout(() => setOpen(false), 800);
+    return () => clearTimeout(timer);
+  }, [state.ok, onSuccess]);
 
   const totalAvailable = batches.reduce(
     (sum, b) => sum + Number(b.remaining_qty),
@@ -135,7 +143,7 @@ export function DisposalDialog({
         <FormField
           label="Batch"
           htmlFor="batch_id"
-          hint="Kosong = FIFO otomatis (batch tertua dulu)"
+          hint="Kosong = FEFO otomatis (batch paling cepat expired dulu)"
         >
           <Select
             id="batch_id"
@@ -143,7 +151,7 @@ export function DisposalDialog({
             defaultValue=""
             disabled={loading || batches.length === 0}
           >
-            <option value="">Otomatis (FIFO)</option>
+            <option value="">Otomatis (FEFO)</option>
             {batches.map((b) => (
               <option key={b.id} value={b.id}>
                 Tgl {formatDate(b.produced_at)} · sisa{" "}

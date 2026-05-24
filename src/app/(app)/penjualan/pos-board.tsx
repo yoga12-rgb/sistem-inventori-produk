@@ -75,7 +75,7 @@ type CartItem = {
   uid: string;
   product_id: string;
   /**
-   * Distribusi qty ke batch. 1 elemen dengan batch_id=null = mode FIFO,
+   * Distribusi qty ke batch. 1 elemen dengan batch_id=null = mode FEFO,
    * sistem yang pecah otomatis. >0 elemen dengan batch_id terisi = mode
    * manual: kasir set qty per batch (boleh > 1 batch).
    */
@@ -407,6 +407,20 @@ export function PosBoard({
     [products, productMeta],
   );
 
+  const expiredProductCount = useMemo(
+    () =>
+      products.reduce((count, product) => {
+        if (!product.is_perishable) return count;
+        const hasExpiredBatch = (batchesByProduct[product.id] ?? []).some(
+          (batch) =>
+            batch.expires_at &&
+            hoursBetween(new Date(), batch.expires_at) <= 0,
+        );
+        return count + (hasExpiredBatch ? 1 : 0);
+      }, 0),
+    [batchesByProduct, products],
+  );
+
   const cartByProduct = useMemo(() => {
     const map = new Map<string, CartItem>();
     for (const ci of cart) map.set(ci.product_id, ci);
@@ -464,7 +478,7 @@ export function PosBoard({
             existing.splits.every((s) => s.batch_id !== null);
           // Mode manual: jangan auto +1 (kasir kontrol penuh via picker).
           if (isManual) return prev;
-          // Mode FIFO: tambah qty +1 sampai mentok stok.
+          // Mode FEFO: tambah qty +1 sampai mentok stok.
           const currentQty = existing.splits.reduce(
             (s, x) => s + x.quantity,
             0,
@@ -745,6 +759,21 @@ export function PosBoard({
           </div>
         ) : null}
 
+        {expiredProductCount > 0 ? (
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div>
+              <p className="font-medium">
+                {expiredProductCount} produk aktif di outlet ini sudah melewati
+                masa expired.
+              </p>
+              <p className="mt-0.5 text-xs text-destructive/80">
+                Jangan jual produk ini. Catat sebagai expired dari halaman Stok.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {batchError ? (
           <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {batchError}
@@ -978,6 +1007,7 @@ function ProductCard({
     expiringSoon && meta.nearestExpiringBatch?.expires_at
       ? hoursBetween(new Date(), meta.nearestExpiringBatch.expires_at)
       : null;
+  const expired = hoursToExp != null && hoursToExp <= 0;
 
   return (
     <button
@@ -1042,10 +1072,10 @@ function ProductCard({
           <Badge variant="warning">Perishable</Badge>
         ) : null}
         {expiringSoon && hoursToExp != null ? (
-          <Badge variant="warning" className="gap-1">
+          <Badge variant={expired ? "danger" : "warning"} className="gap-1">
             <AlertTriangle className="h-3 w-3" />
-            {hoursToExp <= 0
-              ? "Lewat exp"
+            {expired
+              ? "Expired"
               : hoursToExp < 24
                 ? `${Math.round(hoursToExp)}j lagi`
                 : `${Math.round(hoursToExp / 24)}h lagi`}
@@ -1292,7 +1322,7 @@ function CartPanel({
                     <Layers className="h-3 w-3" />
                     {isManual
                       ? `${ci.splits.length} batch dipilih`
-                      : "FIFO otomatis"}
+                      : "FEFO otomatis"}
                   </button>
                   {meta.nearestExpiringBatch ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">

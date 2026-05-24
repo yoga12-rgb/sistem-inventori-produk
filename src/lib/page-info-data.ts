@@ -67,7 +67,7 @@ const EXACT: Record<string, PageInfoEntry> = {
       },
       {
         title: "Buang stok",
-        desc: "Catat Expired / Compliment / Tester / Rusak. Default FIFO atau pilih batch.",
+        desc: "Catat Expired / Compliment / Tester / Rusak. Default FEFO atau pilih batch.",
       },
       {
         title: "Realtime",
@@ -145,7 +145,7 @@ const EXACT: Record<string, PageInfoEntry> = {
     features: [
       {
         title: "Pilih batch sumber",
-        desc: "Dropdown menampilkan info shelf life agar mudah pilih batch tertua dulu.",
+        desc: "Dropdown menampilkan info shelf life agar mudah pilih batch paling cepat expired dulu.",
       },
       {
         title: "Mode one-way / two-way",
@@ -162,7 +162,7 @@ const EXACT: Record<string, PageInfoEntry> = {
     eyebrow: "Operasional",
     title: "Penjualan",
     summary:
-      "POS untuk mencatat transaksi multi-item. Stok dipotong otomatis FIFO.",
+      "POS untuk mencatat transaksi multi-item. Stok dipotong otomatis FEFO.",
     features: [
       {
         title: "Tap kartu produk",
@@ -174,7 +174,7 @@ const EXACT: Record<string, PageInfoEntry> = {
       },
       {
         title: "Multi-batch split",
-        desc: "Pilih FIFO otomatis atau tentukan qty per batch lewat dialog batch.",
+        desc: "Pilih FEFO otomatis atau tentukan qty per batch lewat dialog batch.",
       },
       {
         title: "Riwayat hari ini",
@@ -190,7 +190,7 @@ const EXACT: Record<string, PageInfoEntry> = {
       { keys: ["Ctrl", "Enter"], desc: "Catat transaksi" },
     ],
     tips: [
-      "Default FIFO mengambil batch tertua. Pilih batch manual hanya jika perlu override.",
+      "Default FEFO mengambil batch paling cepat expired. Pilih batch manual hanya jika perlu override.",
       "Warning expired muncul di kartu produk dan baris keranjang.",
     ],
   },
@@ -273,7 +273,7 @@ const EXACT: Record<string, PageInfoEntry> = {
       },
       {
         title: "Tipe movement adjustment_in",
-        desc: "Setiap baris tercatat sebagai adjustment_in — tidak memengaruhi logika FIFO penjualan.",
+        desc: "Setiap baris tercatat sebagai adjustment_in — tidak memengaruhi logika FEFO penjualan.",
       },
     ],
     tips: [

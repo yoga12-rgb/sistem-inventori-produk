@@ -88,6 +88,33 @@ function cycleLocation(
   return ids[nextIdx];
 }
 
+function formatCountdownDuration(diffMs: number): string {
+  const totalMinutes = Math.max(0, Math.floor(Math.abs(diffMs) / 60000));
+  if (totalMinutes < 1) return "<1m";
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}h ${hours}j`;
+  if (hours > 0) return `${hours}j ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function getExpiryCountdown(
+  expiresAt: string | null,
+  nowMs: number | null,
+): { label: string; expired: boolean } | null {
+  if (!expiresAt || nowMs === null) return null;
+  const expiresMs = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresMs)) return null;
+
+  const diffMs = expiresMs - nowMs;
+  return {
+    label: `${diffMs < 0 ? "Lewat" : "Sisa"} ${formatCountdownDuration(diffMs)}`,
+    expired: diffMs < 0,
+  };
+}
+
 export function StockBoard() {
   // Master data dari layout provider — tidak fetch ulang per navigasi.
   const master = useMasterData();
@@ -116,6 +143,7 @@ export function StockBoard() {
   const [error, setError] = useState<string | null>(null);
   const [expiredCount, setExpiredCount] = useState(0);
   const [pageSize, setPageSize] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,6 +155,16 @@ export function StockBoard() {
       JSON.stringify({ locationId } satisfies FilterState),
     );
   }, [locationId]);
+
+  useEffect(() => {
+    const updateNow = () => setNowMs(Date.now());
+    const timer = window.setTimeout(updateNow, 0);
+    const interval = window.setInterval(updateNow, 60000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const fetchRows = useCallback(
     async (from: number, limit: number) => {
@@ -486,13 +524,14 @@ export function StockBoard() {
               rows.map((r) => {
                 const product = master.productById.get(r.product_id);
                 const warningHours = product?.expiry_warning_hours ?? 24;
+                const countdown = getExpiryCountdown(r.nearest_expiry, nowMs);
                 const hoursToExpiry = r.nearest_expiry
                   ? hoursBetween(new Date(), r.nearest_expiry)
                   : null;
                 const isExpired =
                   r.is_perishable &&
-                  hoursToExpiry !== null &&
-                  hoursToExpiry < 0;
+                  (countdown?.expired ??
+                    (hoursToExpiry !== null && hoursToExpiry < 0));
                 const isWarning =
                   r.is_perishable &&
                   !isExpired &&
@@ -568,6 +607,11 @@ export function StockBoard() {
                           >
                             {formatDateTime(r.nearest_expiry)}
                           </span>
+                          {countdown ? (
+                            <Badge variant={isExpired ? "danger" : "muted"}>
+                              {countdown.label}
+                            </Badge>
+                          ) : null}
                           {isExpired ? (
                             <Badge variant="danger">Expired</Badge>
                           ) : isWarning && product?.expiry_discount_percent ? (
@@ -599,6 +643,7 @@ export function StockBoard() {
                           locationLabel={`${r.location_code} — ${r.location_name}`}
                           unit={r.unit}
                           isPerishable={r.is_perishable}
+                          onSuccess={() => void refresh()}
                         />
                       </div>
                     </TableCell>
