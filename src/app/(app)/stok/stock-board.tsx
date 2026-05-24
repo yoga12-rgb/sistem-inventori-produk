@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -76,11 +76,19 @@ function readSavedFilter(): FilterState | null {
   return null;
 }
 
-export function StockBoard({
-  defaultLocationId,
-}: {
-  defaultLocationId: string | null;
-}) {
+function cycleLocation(
+  locations: Array<{ id: string }>,
+  current: string | "all",
+  direction: -1 | 1,
+): string | "all" {
+  if (locations.length === 0) return "all";
+  const ids: Array<string | "all"> = ["all", ...locations.map((l) => l.id)];
+  const idx = ids.indexOf(current);
+  const nextIdx = idx === -1 ? 0 : (idx + direction + ids.length) % ids.length;
+  return ids[nextIdx];
+}
+
+export function StockBoard() {
   // Master data dari layout provider — tidak fetch ulang per navigasi.
   const master = useMasterData();
   const locations = master.locations;
@@ -89,9 +97,7 @@ export function StockBoard({
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   // Init dengan server value saja — localStorage di-sync via useEffect
   // supaya tidak menyebabkan hydration mismatch (server vs client).
-  const [locationId, setLocationId] = useState<string | "all">(
-    defaultLocationId ?? "all",
-  );
+  const [locationId, setLocationId] = useState<string | "all">("all");
 
   // Sync filter dari localStorage setelah mount (client-only).
   useEffect(() => {
@@ -108,6 +114,7 @@ export function StockBoard({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expiredCount, setExpiredCount] = useState(0);
   const [pageSize, setPageSize] = useState<number | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -145,6 +152,23 @@ export function StockBoard({
     [categoryFilter, locationId, supabase],
   );
 
+  const fetchExpiredCount = useCallback(async () => {
+    let query = supabase
+      .from("v_stock_per_location")
+      .select("product_id", { count: "exact", head: true })
+      .eq("is_perishable", true)
+      .lt("nearest_expiry", new Date().toISOString());
+
+    if (locationId !== "all") query = query.eq("location_id", locationId);
+    if (categoryFilter === "none") query = query.is("category_id", null);
+    else if (categoryFilter !== "all") {
+      query = query.eq("category_id", categoryFilter);
+    }
+
+    const { count, error } = await query;
+    return error ? null : (count ?? 0);
+  }, [categoryFilter, locationId, supabase]);
+
   useEffect(() => {
     const node = scrollAreaRef.current;
     if (!node) return;
@@ -181,8 +205,12 @@ export function StockBoard({
         setError(null);
         scrollAreaRef.current?.scrollTo({ top: 0 });
 
-        const { data, error } = await fetchRows(0, pageSize);
+        const [{ data, error }, nextExpiredCount] = await Promise.all([
+          fetchRows(0, pageSize),
+          fetchExpiredCount(),
+        ]);
         if (cancelled) return;
+        if (nextExpiredCount !== null) setExpiredCount(nextExpiredCount);
         if (error) {
           setError(error.message);
           setLoading(false);
@@ -200,7 +228,7 @@ export function StockBoard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [fetchRows, pageSize]);
+  }, [fetchExpiredCount, fetchRows, pageSize]);
 
   const loadMore = useCallback(async () => {
     if (pageSize === null || loadingMore || loading || !hasMore) return;
@@ -228,7 +256,11 @@ export function StockBoard({
     setError(null);
     scrollAreaRef.current?.scrollTo({ top: 0 });
 
-    const { data, error } = await fetchRows(0, pageSize);
+    const [{ data, error }, nextExpiredCount] = await Promise.all([
+      fetchRows(0, pageSize),
+      fetchExpiredCount(),
+    ]);
+    if (nextExpiredCount !== null) setExpiredCount(nextExpiredCount);
     if (error) {
       setError(error.message);
       setLoading(false);
@@ -239,7 +271,7 @@ export function StockBoard({
     setRows(nextRows);
     setHasMore(nextRows.length === pageSize);
     setLoading(false);
-  }, [fetchRows, pageSize]);
+  }, [fetchExpiredCount, fetchRows, pageSize]);
 
   useEffect(() => {
     const node = sentinelRef.current;
@@ -283,6 +315,18 @@ export function StockBoard({
     <div className="flex h-[calc(100dvh-10.5rem)] min-h-[26rem] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
       <div className="sticky top-0 z-20 flex flex-shrink-0 flex-col gap-3 bg-background pb-2">
         <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-end gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Lokasi sebelumnya"
+              onClick={() =>
+                setLocationId((cur) => cycleLocation(locations, cur, -1))
+              }
+              disabled={locations.length === 0}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Lokasi</span>
           <Select
@@ -300,6 +344,18 @@ export function StockBoard({
             ))}
           </Select>
         </label>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Lokasi berikutnya"
+              onClick={() =>
+                setLocationId((cur) => cycleLocation(locations, cur, +1))
+              }
+              disabled={locations.length === 0}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Muat ulang
@@ -374,6 +430,20 @@ export function StockBoard({
         <p className="flex-shrink-0 text-sm text-destructive">{error}</p>
       ) : null}
 
+      {expiredCount > 0 ? (
+        <div className="flex flex-shrink-0 items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <div>
+            <p className="font-medium">
+              {expiredCount} produk aktif sudah melewati masa expired.
+            </p>
+            <p className="mt-0.5 text-xs text-destructive/80">
+              Gunakan aksi Buang stok untuk mencatat stok expired.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
         <div ref={scrollAreaRef} className="h-full overflow-auto">
           <table className="w-full min-w-[68rem] caption-bottom text-sm">
@@ -416,10 +486,18 @@ export function StockBoard({
               rows.map((r) => {
                 const product = master.productById.get(r.product_id);
                 const warningHours = product?.expiry_warning_hours ?? 24;
+                const hoursToExpiry = r.nearest_expiry
+                  ? hoursBetween(new Date(), r.nearest_expiry)
+                  : null;
+                const isExpired =
+                  r.is_perishable &&
+                  hoursToExpiry !== null &&
+                  hoursToExpiry < 0;
                 const isWarning =
                   r.is_perishable &&
-                  r.nearest_expiry &&
-                  hoursBetween(new Date(), r.nearest_expiry) <= warningHours;
+                  !isExpired &&
+                  hoursToExpiry !== null &&
+                  hoursToExpiry <= warningHours;
                 return (
                   <TableRow key={`${r.product_id}-${r.location_id}`}>
                     <TableCell>
@@ -467,22 +545,32 @@ export function StockBoard({
                     <TableCell>
                       {r.is_perishable ? (
                         <span className="flex items-center gap-2">
-                          {isWarning ? (
+                          {isExpired || isWarning ? (
                             <AlertTriangle
-                              aria-label="Mendekati kedaluwarsa"
-                              className="h-4 w-4 text-warning"
+                              aria-label={
+                                isExpired
+                                  ? "Sudah expired"
+                                  : "Mendekati kedaluwarsa"
+                              }
+                              className={cn(
+                                "h-4 w-4",
+                                isExpired ? "text-destructive" : "text-warning",
+                              )}
                             />
                           ) : null}
                           <span
                             className={cn(
                               "text-sm",
+                              isExpired && "font-medium text-destructive",
                               isWarning &&
                                 "font-medium text-warning-foreground",
                             )}
                           >
                             {formatDateTime(r.nearest_expiry)}
                           </span>
-                          {isWarning && product?.expiry_discount_percent ? (
+                          {isExpired ? (
+                            <Badge variant="danger">Expired</Badge>
+                          ) : isWarning && product?.expiry_discount_percent ? (
                             <Badge variant="warning">
                               Saran diskon{" "}
                               {Math.round(product.expiry_discount_percent)}%
