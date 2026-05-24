@@ -126,11 +126,11 @@ export function BatchPickerDialog({
       onOpenChange={onOpenChange}
       title={`Distribusi batch — ${productName}`}
       description={`Total stok ${formatNumber(totalAvailable)} ${unit}. Pilih FEFO untuk pemotongan otomatis dari batch paling cepat expired, atau Manual untuk menentukan qty per batch.`}
-      className="max-w-xl"
+      className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-hidden"
     >
-      <div className="space-y-4">
+      <div className="flex max-h-[calc(100dvh-11rem)] min-h-0 flex-col gap-3">
         {/* Toggle FEFO / Manual */}
-        <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-1">
+        <div className="grid flex-shrink-0 grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-1">
           <button
             type="button"
             onClick={() => setMode("fifo")}
@@ -185,7 +185,7 @@ export function BatchPickerDialog({
           />
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-shrink-0 justify-end gap-2 pt-2">
           <Button
             type="button"
             variant="outline"
@@ -234,7 +234,7 @@ function FifoPanel({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="min-h-0 space-y-3">
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
           Total qty ({unit})
@@ -265,7 +265,7 @@ function FifoPanel({
           <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Pratinjau pemotongan
           </div>
-          <ul className="space-y-1 text-sm">
+          <ul className="max-h-[34vh] space-y-1 overflow-y-auto pr-1 text-sm">
             {preview.map(({ batch, take }) => {
               const expSoon =
                 isPerishable &&
@@ -335,8 +335,8 @@ function ManualPanel({
   }
 
   return (
-    <div className="space-y-3">
-      <ul className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+    <div className="min-h-0 space-y-3">
+      <ul className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
         {batches.map((b) => {
           const expSoon =
             isPerishable &&

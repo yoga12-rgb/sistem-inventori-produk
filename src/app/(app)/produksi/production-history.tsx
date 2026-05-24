@@ -584,7 +584,7 @@ export function ProductionHistory({
     .size;
 
   return (
-    <div className="flex h-[calc(100dvh-21.5rem)] min-h-[24rem] flex-col gap-4 lg:h-[calc(100dvh-19rem)]">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="sticky top-0 z-20 flex flex-shrink-0 flex-wrap items-end gap-3 bg-card pb-2">
         <div className="flex items-end gap-1">
           <Button

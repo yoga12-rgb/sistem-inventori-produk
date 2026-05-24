@@ -223,8 +223,12 @@ export function ProductionForm({
   );
 
   return (
-    <form ref={formRef} action={action} className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="grid flex-shrink-0 gap-4 sm:grid-cols-2">
+    <form
+      ref={formRef}
+      action={action}
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <div className="grid flex-shrink-0 gap-3 sm:grid-cols-2">
         <FormField
           label="Lokasi"
           htmlFor="location_id"
@@ -264,7 +268,7 @@ export function ProductionForm({
         </FormField>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5">
         <div className="flex flex-shrink-0 items-center justify-between">
           <h3 className="text-sm font-semibold">Item</h3>
           <Button
@@ -279,7 +283,7 @@ export function ProductionForm({
           </Button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
           {items.map((row, idx) => {
             const info = rowsInfo[idx];
             const product = info.product;
@@ -295,7 +299,7 @@ export function ProductionForm({
             return (
               <div
                 key={row.uid}
-                className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[2fr_120px_1fr_auto] sm:items-start"
+                className="grid gap-2.5 rounded-lg border bg-background/50 p-2.5 sm:grid-cols-[2fr_120px_1fr_auto] sm:items-start"
               >
                 <FormField
                   label={`Produk ${idx + 1}`}

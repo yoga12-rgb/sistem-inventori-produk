@@ -47,9 +47,5 @@ export default async function ProduksiPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <ProduksiTabs />
-    </div>
-  );
+  return <ProduksiTabs />;
 }

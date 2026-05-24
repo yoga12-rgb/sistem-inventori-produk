@@ -5,38 +5,38 @@
 
 /* ---------- Design tokens (light mode default) ----------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
+  --background: #eef2f7;
+  --foreground: #0f172a;
 
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
+  --muted: #dbe3ee;
+  --muted-foreground: #334155;
 
-  --card: #ffffff;
-  --card-foreground: #0a0a0a;
+  --card: #f8fafc;
+  --card-foreground: #0f172a;
 
-  --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
+  --popover: #f8fafc;
+  --popover-foreground: #0f172a;
 
-  --border: #e4e4e7;
-  --input: #e4e4e7;
+  --border: #94a3b8;
+  --input: #64748b;
 
   /* Primary = Orange (PRD accent). */
-  --primary: #ea580c;            /* orange-600 */
+  --primary: #9a3412;            /* orange-800 */
   --primary-foreground: #ffffff;
 
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
+  --secondary: #dbe3ee;
+  --secondary-foreground: #0f172a;
 
-  --accent: #fff7ed;             /* orange-50 */
-  --accent-foreground: #9a3412;  /* orange-800 */
+  --accent: #fed7aa;             /* orange-200 */
+  --accent-foreground: #7c2d12;  /* orange-900 */
 
-  --destructive: #dc2626;
+  --destructive: #991b1b;
   --destructive-foreground: #ffffff;
 
-  --warning: #f59e0b;
+  --warning: #92400e;
   --warning-foreground: #1c1917;
 
-  --ring: #fb923c;               /* orange-400 */
+  --ring: #c2410c;               /* orange-700 */
 
   --radius: 0.625rem;
 }

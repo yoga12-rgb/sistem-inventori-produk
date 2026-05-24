@@ -59,10 +59,10 @@ export function ProduksiTabs() {
     <Tabs
       value={tab}
       onValueChange={(v) => setTab(v as TabKey)}
-      className="relative"
+      className="flex h-[calc(100dvh-10.5rem)] min-h-[32rem] flex-col gap-2 lg:h-[calc(100dvh-8rem)]"
     >
-      <div className="sticky top-14 z-40 -mx-4 mb-4 bg-background/95 px-4 py-2 shadow-[0_1px_0_var(--border)] backdrop-blur sm:-mx-6 sm:px-6 lg:top-16 lg:-mx-8 lg:px-8">
-        <TabsList>
+      <div className="sticky top-0 z-30 flex-shrink-0 bg-background pb-1">
+        <TabsList className="h-10">
           <TabsTrigger value="produksi">
             <Sparkles className="h-4 w-4" />
             Catat produksi
@@ -78,15 +78,10 @@ export function ProduksiTabs() {
         </TabsList>
       </div>
 
-      <TabsContent value="produksi">
-        <div className="flex h-[calc(100dvh-13.5rem)] min-h-[28rem] flex-col rounded-xl border bg-card p-5 lg:h-[calc(100dvh-12rem)]">
-          <div className="mb-4 flex-shrink-0">
+      <TabsContent value="produksi" className="mt-0 min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col rounded-xl border bg-card p-3">
+          <div className="mb-2 flex-shrink-0">
             <h2 className="text-base font-semibold">Catat produksi</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Tambah beberapa varian dalam satu submission. Untuk varian
-              perishable, kedaluwarsa terisi otomatis dari shelf life
-              produk — silakan override per varian jika perlu.
-            </p>
           </div>
           <ProductionForm
             products={products}
@@ -96,9 +91,9 @@ export function ProduksiTabs() {
         </div>
       </TabsContent>
 
-      <TabsContent value="stok-masuk">
-        <div className="rounded-xl border bg-card p-5">
-          <div className="mb-4">
+      <TabsContent value="stok-masuk" className="mt-0 min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col rounded-xl border bg-card p-3">
+          <div className="mb-2 flex-shrink-0">
             <h2 className="text-base font-semibold">
               Stok masuk (non-perishable)
             </h2>
@@ -112,18 +107,20 @@ export function ProduksiTabs() {
               Belum ada produk non-perishable aktif.
             </p>
           ) : (
-            <StockEntryForm
-              products={nonPerishableProducts}
-              locations={locations}
-              defaultLocationId={centralKitchens[0].id}
-            />
+            <div className="min-h-0 flex-1">
+              <StockEntryForm
+                products={nonPerishableProducts}
+                locations={locations}
+                defaultLocationId={centralKitchens[0].id}
+              />
+            </div>
           )}
         </div>
       </TabsContent>
 
-      <TabsContent value="riwayat">
-        <div className="rounded-xl border bg-card p-5">
-          <div className="mb-4">
+      <TabsContent value="riwayat" className="mt-0 min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col rounded-xl border bg-card p-3">
+          <div className="mb-2 flex-shrink-0">
             <h2 className="text-base font-semibold">Riwayat produksi</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Daftar batch yang diproduksi pada tanggal terpilih. Filter
@@ -132,7 +129,7 @@ export function ProduksiTabs() {
           </div>
           {/*
             `active` flag memastikan ProductionHistory hanya fetch &
-            subscribe realtime saat tab ini sedang dibuka — hemat
+            subscribe realtime saat tab ini sedang dibuka - hemat
             bandwidth Supabase.
           */}
           <ProductionHistory

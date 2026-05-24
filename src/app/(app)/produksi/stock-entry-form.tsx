@@ -46,8 +46,8 @@ export function StockEntryForm({
   }, [state]);
 
   return (
-    <form ref={formRef} action={action} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <form ref={formRef} action={action} className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <FormField
           label="Produk"
           htmlFor="product_id"
@@ -95,7 +95,7 @@ export function StockEntryForm({
         </FormField>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <FormField
           label="Kuantitas"
           htmlFor="quantity"

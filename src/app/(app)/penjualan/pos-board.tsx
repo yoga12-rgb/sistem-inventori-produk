@@ -632,22 +632,28 @@ export function PosBoard({
 
 
   return (
-    <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as PageTab)}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="kasir">
-          <Sparkles className="h-4 w-4" />
-          Kasir
-        </TabsTrigger>
-        <TabsTrigger value="riwayat">
-          <Receipt className="h-4 w-4" />
-          Riwayat
-        </TabsTrigger>
-      </TabsList>
+    <Tabs
+      value={pageTab}
+      onValueChange={(v) => setPageTab(v as PageTab)}
+      className="flex h-[calc(100dvh-10.5rem)] min-h-[32rem] flex-col gap-3 lg:h-[calc(100dvh-8rem)]"
+    >
+      <div className="sticky top-0 z-30 flex-shrink-0 bg-background pb-1">
+        <TabsList className="h-10">
+          <TabsTrigger value="kasir">
+            <Sparkles className="h-4 w-4" />
+            Kasir
+          </TabsTrigger>
+          <TabsTrigger value="riwayat">
+            <Receipt className="h-4 w-4" />
+            Riwayat
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
-      <TabsContent value="kasir">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
+      <TabsContent value="kasir" className="mt-0 min-h-0 flex-1">
+        <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex flex-shrink-0 flex-wrap items-end gap-3">
           <div className="min-w-60 flex-1">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">
@@ -688,9 +694,9 @@ export function PosBoard({
               </Select>
             </label>
           ) : null}
-        </div>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
           {(Object.keys(TAB_LABEL) as FilterTab[]).map((t) => {
             const active = tab === t;
             const badge =
@@ -726,11 +732,11 @@ export function PosBoard({
             />
             Tampilkan stok habis
           </label>
-        </div>
+            </div>
 
-        {/* Baris chip kategori (AND dengan tab di atas) */}
-        {categories.length > 0 || (categoryCounts.none ?? 0) > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
+            {/* Baris chip kategori (AND dengan tab di atas) */}
+            {categories.length > 0 || (categoryCounts.none ?? 0) > 0 ? (
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
             <CategoryChip
               active={categoryFilter === "all"}
               onClick={() => setCategoryFilter("all")}
@@ -756,11 +762,11 @@ export function PosBoard({
                 count={categoryCounts.none}
               />
             ) : null}
-          </div>
-        ) : null}
+              </div>
+            ) : null}
 
-        {expiredProductCount > 0 ? (
-          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {expiredProductCount > 0 ? (
+              <div className="flex flex-shrink-0 items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div>
               <p className="font-medium">
@@ -771,81 +777,86 @@ export function PosBoard({
                 Jangan jual produk ini. Catat sebagai expired dari halaman Stok.
               </p>
             </div>
+              </div>
+            ) : null}
+
+            {batchError ? (
+              <p className="flex-shrink-0 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                {batchError}
+              </p>
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          {batchLoading && Object.keys(batchesByProduct).length === 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-lg border bg-muted/30"
+                />
+              ))}
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
+              Tidak ada produk yang cocok dengan filter ini.
+            </div>
+          ) : (
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {filteredProducts.map((p) => {
+                const meta = productMeta.get(p.id)!;
+                const cartItem = cartByProduct.get(p.id);
+                return (
+                  <li key={p.id}>
+                    <ProductCard
+                      product={p}
+                      meta={meta}
+                      inCartQty={
+                        cartItem
+                          ? cartItem.splits.reduce((s, x) => s + x.quantity, 0)
+                          : 0
+                      }
+                      onTap={() => addToCart(p)}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+            </div>
           </div>
-        ) : null}
 
-        {batchError ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            {batchError}
-          </p>
-        ) : null}
-
-        {batchLoading && Object.keys(batchesByProduct).length === 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-28 animate-pulse rounded-lg border bg-muted/30"
+          <aside className="hidden min-h-0 lg:block">
+            <div className="sticky top-0 h-full min-h-0">
+              <CartPanel
+                outlets={outlets}
+                outletId={outletId}
+                onOutletChange={setOutletId}
+                cart={cart}
+                productMeta={productMeta}
+                errors={cartErrors}
+                notes={notes}
+                onNotesChange={setNotes}
+                onSetFifoQty={setFifoQty}
+                onIncrementFifo={incrementFifoQty}
+                onRemove={removeItem}
+                onClear={clearCart}
+                onPickBatch={(uid, productId) => {
+                  setPickerCartUid(uid);
+                  setPickerProductId(productId);
+                }}
+                onSubmit={handleSubmit}
+                canSubmit={canSubmit}
+                submitting={submitting}
               />
-            ))}
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-            Tidak ada produk yang cocok dengan filter ini.
-          </div>
-        ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {filteredProducts.map((p) => {
-              const meta = productMeta.get(p.id)!;
-              const cartItem = cartByProduct.get(p.id);
-              return (
-                <li key={p.id}>
-                  <ProductCard
-                    product={p}
-                    meta={meta}
-                    inCartQty={
-                      cartItem
-                        ? cartItem.splits.reduce((s, x) => s + x.quantity, 0)
-                        : 0
-                    }
-                    onTap={() => addToCart(p)}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      <aside className="hidden lg:block">
-        <div className="sticky top-20">
-          <CartPanel
-            outlets={outlets}
-            outletId={outletId}
-            onOutletChange={setOutletId}
-            cart={cart}
-            productMeta={productMeta}
-            errors={cartErrors}
-            notes={notes}
-            onNotesChange={setNotes}
-            onSetFifoQty={setFifoQty}
-            onIncrementFifo={incrementFifoQty}
-            onRemove={removeItem}
-            onClear={clearCart}
-            onPickBatch={(uid, productId) => {
-              setPickerCartUid(uid);
-              setPickerProductId(productId);
-            }}
-            onSubmit={handleSubmit}
-            canSubmit={canSubmit}
-            submitting={submitting}
-          />
-        </div>
-      </aside>
+            </div>
+          </aside>
         </div>
       </TabsContent>
 
-      <TabsContent value="riwayat">
+      <TabsContent
+        value="riwayat"
+        className="mt-0 min-h-0 flex-1 overflow-hidden"
+      >
         <SaleHistoryPanel
           initialSales={history}
           active={pageTab === "riwayat"}
@@ -1015,7 +1026,7 @@ function ProductCard({
       onClick={onTap}
       disabled={oos}
       className={cn(
-        "relative flex h-full w-full flex-col gap-2 rounded-lg border bg-card p-3 text-left transition-colors",
+        "relative flex h-full min-h-24 w-full flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
         oos
           ? "cursor-not-allowed opacity-50"
@@ -1054,7 +1065,7 @@ function ProductCard({
           </div>
         </div>
         {inCartQty > 0 ? (
-          <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground tabular-nums">
+            <span className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tabular-nums">
             {inCartQty}
           </span>
         ) : null}
@@ -1138,11 +1149,11 @@ function CartPanel({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4",
-        !embedded && "max-h-[calc(100dvh-7rem)] rounded-xl border bg-card p-4",
+        "flex min-h-0 flex-col gap-3",
+        embedded ? "h-full" : "h-full rounded-xl border bg-card p-3",
       )}
     >
-      <header className="flex items-center justify-between gap-2">
+      <header className="flex flex-shrink-0 items-center justify-between gap-2">
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold">
           <ShoppingCart className="h-4 w-4" />
           Keranjang
@@ -1165,7 +1176,7 @@ function CartPanel({
       </header>
 
       {outlets.length > 1 ? (
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-shrink-0 flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">
             Outlet penjualan
           </span>
@@ -1181,7 +1192,7 @@ function CartPanel({
           </Select>
         </label>
       ) : outlet ? (
-        <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex-shrink-0 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           Outlet:{" "}
           <span className="font-medium text-foreground">{outlet.name}</span>
         </div>
@@ -1189,7 +1200,7 @@ function CartPanel({
 
       <div
         className={cn(
-          "flex-1 space-y-2 overflow-y-auto pr-1",
+          "min-h-0 flex-1 space-y-2 overflow-y-auto pr-1",
           !embedded && "min-h-[120px]",
         )}
       >
@@ -1208,7 +1219,7 @@ function CartPanel({
             return (
               <div
                 key={ci.uid}
-                className="rounded-lg border bg-background/40 p-3"
+                className="rounded-lg border bg-background/40 p-2.5"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -1272,7 +1283,7 @@ function CartPanel({
                         type="button"
                         onClick={() => onIncrementFifo(ci.uid, -1)}
                         disabled={totalLineQty <= 1}
-                        className="grid h-9 w-9 place-items-center disabled:opacity-40"
+                        className="grid h-8 w-8 place-items-center disabled:opacity-40"
                         aria-label="Kurangi"
                       >
                         <Minus className="h-3.5 w-3.5" />
@@ -1289,13 +1300,13 @@ function CartPanel({
                             Number(e.currentTarget.value),
                           )
                         }
-                        className="h-9 w-14 border-x bg-transparent text-center text-sm tabular-nums focus:outline-none"
+                        className="h-8 w-12 border-x bg-transparent text-center text-sm tabular-nums focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => onIncrementFifo(ci.uid, +1)}
                         disabled={totalLineQty >= meta.totalStock}
-                        className="grid h-9 w-9 place-items-center disabled:opacity-40"
+                        className="grid h-8 w-8 place-items-center disabled:opacity-40"
                         aria-label="Tambah"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -1341,14 +1352,14 @@ function CartPanel({
       </div>
 
       {errors.length > 0 ? (
-        <ul className="space-y-1 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+        <ul className="flex-shrink-0 space-y-1 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
           {errors.map((e, i) => (
             <li key={i}>• {e}</li>
           ))}
         </ul>
       ) : null}
 
-      <label className="flex flex-col gap-1.5">
+      <label className="flex flex-shrink-0 flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
           Catatan transaksi (opsional)
         </span>
@@ -1366,7 +1377,7 @@ function CartPanel({
         size="lg"
         onClick={onSubmit}
         disabled={!canSubmit}
-        className="w-full"
+        className="w-full flex-shrink-0"
       >
         {submitting
           ? "Menyimpan…"
@@ -1374,7 +1385,7 @@ function CartPanel({
             ? "Catat penjualan"
             : `Catat penjualan (${formatNumber(totalQty)} qty)`}
       </Button>
-      <p className="text-center text-[11px] text-muted-foreground">
+      <p className="flex-shrink-0 text-center text-[11px] text-muted-foreground">
         Tip: tekan{" "}
         <kbd className="rounded border bg-muted px-1 py-0.5">/</kbd> untuk
         cari ·{" "}
