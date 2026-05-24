@@ -63,7 +63,7 @@ const EXACT: Record<string, PageInfoEntry> = {
       },
       {
         title: "Kredit",
-        desc: "Memuat kredit Yoga Septriana sebagai pemilik/pengembang ide aplikasi.",
+        desc: "Memuat kredit Yoga Septriana sebagai Developer aplikasi.",
       },
     ],
     tips: [

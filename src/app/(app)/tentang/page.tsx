@@ -118,7 +118,7 @@ export default function TentangPage() {
         </h3>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           Aplikasi ini dibuat untuk mendukung kebutuhan operasional inventaris.
-          Pemilik dan pengembang ide aplikasi:{" "}
+          Developer:{" "}
           <a
             href="https://www.instagram.com/mang.agooy/"
             target="_blank"
