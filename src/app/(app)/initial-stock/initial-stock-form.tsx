@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useActionState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +35,18 @@ const initialState: InitialStockState = { ok: false };
 function toLocalDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function createEmptyRow(uid: string, locationId: string): LineItem {
+  return {
+    uid,
+    location_id: locationId,
+    product_id: "",
+    quantity: "",
+    produced_at: toLocalDate(new Date()),
+    expires_at: "",
+    notes: "",
+  };
 }
 
 function toLocalInput(d: Date): string {
@@ -61,25 +80,28 @@ export function InitialStockForm({
   // Stable id prefix + counter
   const idPrefix = useId();
   const counterRef = useRef(1);
-  const nextUid = () => `${idPrefix}-${counterRef.current++}`;
-  const makeEmptyRow = (uid: string = nextUid()): LineItem => ({
-    uid,
-    location_id: defaultLocationId,
-    product_id: "",
-    quantity: "",
-    produced_at: toLocalDate(new Date()),
-    expires_at: "",
-    notes: "",
-  });
+  const nextUid = useCallback(
+    () => `${idPrefix}-${counterRef.current++}`,
+    [idPrefix],
+  );
+  const makeEmptyRow = useCallback(
+    (uid: string): LineItem => createEmptyRow(uid, defaultLocationId),
+    [defaultLocationId],
+  );
 
-  const [items, setItems] = useState<LineItem[]>(() => [makeEmptyRow()]);
+  const [items, setItems] = useState<LineItem[]>(() => [
+    createEmptyRow(`${idPrefix}-0`, defaultLocationId),
+  ]);
 
   // Reset form setelah server action sukses.
   useEffect(() => {
     if (!state.ok) return;
     formRef.current?.reset();
-    setItems([makeEmptyRow()]);
-  }, [state]);
+    const resetId = window.setTimeout(() => {
+      setItems([makeEmptyRow(nextUid())]);
+    }, 0);
+    return () => window.clearTimeout(resetId);
+  }, [state.ok, makeEmptyRow, nextUid]);
 
   const productById = useMemo(() => {
     const map = new Map<string, MasterProduct>();
@@ -92,7 +114,7 @@ export function InitialStockForm({
     [locations],
   );
 
-  const addRow = () => setItems((prev) => [...prev, makeEmptyRow()]);
+  const addRow = () => setItems((prev) => [...prev, makeEmptyRow(nextUid())]);
 
   const removeRow = (uid: string) =>
     setItems((prev) =>

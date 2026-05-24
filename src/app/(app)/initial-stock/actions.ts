@@ -37,14 +37,6 @@ export type InitialStockState = {
 
 // ---------- Helper: FormDataEntryValue → number ----------------------------
 
-function num(value: FormDataEntryValue | null): number | null {
-  if (value == null) return null;
-  const t = String(value).trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
-
 // ---------- Server action --------------------------------------------------
 
 export async function recordInitialStockAction(

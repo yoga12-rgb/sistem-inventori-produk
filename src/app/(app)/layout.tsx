@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { MasterDataProvider } from "@/components/master-data-provider";
 import { TransferInboxProvider } from "@/components/transfer-inbox";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getMasterData } from "@/lib/master-data";
 
 /**
@@ -24,8 +23,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requireUser();
 
   const masterData = await getMasterData();
 

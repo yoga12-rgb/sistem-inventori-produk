@@ -120,6 +120,7 @@ const SearchSelect = React.forwardRef<HTMLSelectElement, SearchSelectProps>(
       : uncontrolledValue;
 
     const selectedOption = options.find((o) => o.value === currentValue);
+    const listboxId = React.useId();
 
     // Refs
     const triggerRef = React.useRef<HTMLButtonElement | null>(null);
@@ -350,6 +351,7 @@ const SearchSelect = React.forwardRef<HTMLSelectElement, SearchSelectProps>(
           role="combobox"
           aria-haspopup="dialog"
           aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
           aria-describedby={ariaDescribedBy}
@@ -458,6 +460,7 @@ const SearchSelect = React.forwardRef<HTMLSelectElement, SearchSelectProps>(
 
                 {/* Options list */}
                 <div
+                  id={listboxId}
                   role="listbox"
                   className="overflow-auto p-1"
                   style={{ maxHeight: 240 }}

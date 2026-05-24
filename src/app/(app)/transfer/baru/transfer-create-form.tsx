@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useActionState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,12 +67,18 @@ export function TransferCreateForm({
   // counterRef hanya dibaca dari event handler / effect (tidak boleh saat render).
   const idPrefix = useId();
   const counterRef = useRef(1); // 0 dipakai row awal.
-  const nextUid = () => `${idPrefix}-${counterRef.current++}`;
-  const makeEmptyRow = (uid: string = nextUid()): LineItem => ({
-    uid,
-    source_batch_id: "",
-    quantity: "",
-  });
+  const nextUid = useCallback(
+    () => `${idPrefix}-${counterRef.current++}`,
+    [idPrefix],
+  );
+  const makeEmptyRow = useCallback(
+    (uid: string): LineItem => ({
+      uid,
+      source_batch_id: "",
+      quantity: "",
+    }),
+    [],
+  );
 
   const [fromId, setFromId] = useState<string>(defaultFromId ?? "");
   const [toId, setToId] = useState<string>("");
@@ -110,9 +123,11 @@ export function TransferCreateForm({
 
   // Reset items saat asal berubah supaya tidak bawa batch dari outlet lama.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems([makeEmptyRow()]);
-  }, [fromId]);
+    const resetId = window.setTimeout(() => {
+      setItems([makeEmptyRow(nextUid())]);
+    }, 0);
+    return () => window.clearTimeout(resetId);
+  }, [fromId, makeEmptyRow, nextUid]);
 
   const batchById = useMemo(() => {
     const map = new Map<string, Batch>();
@@ -120,7 +135,7 @@ export function TransferCreateForm({
     return map;
   }, [batches]);
 
-  const addRow = () => setItems((prev) => [...prev, makeEmptyRow()]);
+  const addRow = () => setItems((prev) => [...prev, makeEmptyRow(nextUid())]);
   const removeRow = (uid: string) =>
     setItems((prev) =>
       prev.length > 1 ? prev.filter((i) => i.uid !== uid) : prev,

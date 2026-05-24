@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import { LoginForm } from "./login-form";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeRedirectPath } from "@/lib/safe-redirect";
+
+const createAccountWaUrl =
+  "https://wa.me/6285374748881?text=Halo%2C%20saya%20ingin%20membuat%20akun%20Sistem%20Inventaris.";
 
 export const metadata = {
   title: "Masuk — Sistem Inventaris",
@@ -18,9 +23,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   } = await supabase.auth.getUser();
 
   const { next } = await searchParams;
+  const redirectTo = safeRedirectPath(next);
 
   if (user) {
-    redirect(next ?? "/");
+    redirect(redirectTo);
   }
 
   return (
@@ -31,8 +37,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           Gunakan akun yang dibuatkan oleh Super Admin.
         </p>
         <div className="mt-6">
-          <LoginForm redirectTo={next ?? "/"} />
+          <LoginForm redirectTo={redirectTo} />
         </div>
+        <a
+          href={createAccountWaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+        >
+          <MessageCircle className="h-4 w-4" aria-hidden="true" />
+          Buat akun
+        </a>
       </div>
     </main>
   );

@@ -45,19 +45,18 @@ function resolve(theme: Theme): "light" | "dark" {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme);
-  const [resolvedTheme, setResolved] = useState<"light" | "dark">(() =>
-    resolve(getInitialTheme()),
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">(() =>
+    resolve("system"),
   );
+  const resolvedTheme = theme === "system" ? systemTheme : theme;
 
   // Apply theme ke DOM
-  const applyTheme = useCallback((t: Theme) => {
+  const applyResolvedTheme = useCallback((r: "light" | "dark") => {
     if (typeof window === "undefined") return;
-    const r = resolve(t);
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(r);
     root.style.colorScheme = r;
-    setResolved(r);
   }, []);
 
   const setTheme = useCallback(
@@ -68,24 +67,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* noop */
       }
-      applyTheme(t);
     },
-    [applyTheme],
+    [],
   );
 
   // Apply on mount + listen system preference changes
   useEffect(() => {
-    applyTheme(theme);
+    applyResolvedTheme(resolvedTheme);
+  }, [resolvedTheme, applyResolvedTheme]);
 
+  // Listen system preference changes
+  useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = () => {
-      if (theme === "system") {
-        applyTheme("system");
-      }
+      setSystemTheme(resolve("system"));
     };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [theme, applyTheme]);
+  }, []);
 
   // Listen storage changes from other tabs
   useEffect(() => {
@@ -94,13 +93,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const t = e.newValue as Theme;
         if (["light", "dark", "system"].includes(t)) {
           setThemeState(t);
-          applyTheme(t);
         }
       }
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
-  }, [applyTheme]);
+  }, []);
 
   const value = useMemo(
     () => ({ theme, resolvedTheme, setTheme }),

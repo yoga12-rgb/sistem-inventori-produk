@@ -7,7 +7,7 @@ import { getMasterData } from "@/lib/master-data";
 export const metadata = { title: "Stok - Sistem Inventaris" };
 
 export default async function StokPage() {
-  await requireUser();
+  const me = await requireUser();
 
   const { locations } = await getMasterData();
 
@@ -23,7 +23,7 @@ export default async function StokPage() {
 
   return (
     <div className="space-y-6">
-      <StockBoard />
+      <StockBoard defaultLocationId={me.profile?.outlet_id ?? null} />
     </div>
   );
 }

@@ -254,7 +254,7 @@ export function SaleHistoryPanel({
         result.message ?? "Coba lagi atau hubungi admin.",
       );
     }
-  }, [voidTarget, voidReason, fetchByDate, date, toast]);
+  }, [voidTarget, voidReason, fetchByDate, date, toast, onVoided]);
 
   return (
     <div className="space-y-4">

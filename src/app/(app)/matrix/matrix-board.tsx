@@ -120,40 +120,86 @@ export function MatrixBoard({
   defaultLocationId: string | null;
 }) {
   // Locations dari provider — tidak fetch ulang per navigasi.
-  const { locations } = useMasterData();
+  const { locations, productById, categoryById } = useMasterData();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [date, setDate] = useState<string>(todayLocalIso());
   const [locationId, setLocationId] = useState<string | "all">(
-    () => readSavedFilter()?.locationId ?? defaultLocationId ?? "all",
+    defaultLocationId ?? "all",
   );
+  const [allRows, setAllRows] = useState<MatrixRow[]>([]);
   const [rows, setRows] = useState<MatrixRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState<number | null>(null);
+  const [filterReady, setFilterReady] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Persist filter lokasi.
+  // Sync filter tersimpan setelah mount agar render pertama server/client sama.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const syncId = window.setTimeout(() => {
+      const saved = readSavedFilter();
+      if (saved?.locationId) {
+        setLocationId(saved.locationId);
+      }
+      setFilterReady(true);
+    }, 0);
+    return () => window.clearTimeout(syncId);
+  }, []);
+
+  // Persist filter lokasi setelah sync awal selesai.
+  useEffect(() => {
+    if (!filterReady) return;
     window.localStorage.setItem(
       FILTER_KEY,
       JSON.stringify({ locationId } satisfies FilterState),
     );
-  }, [locationId]);
+  }, [filterReady, locationId]);
+
+  const compareRows = useCallback(
+    (a: MatrixRow, b: MatrixRow) => {
+      const productA = productById.get(a.product_id);
+      const productB = productById.get(b.product_id);
+      const categoryA = productA?.category_id
+        ? categoryById.get(productA.category_id)
+        : null;
+      const categoryB = productB?.category_id
+        ? categoryById.get(productB.category_id)
+        : null;
+      const sortA = categoryA?.sort ?? Number.MAX_SAFE_INTEGER;
+      const sortB = categoryB?.sort ?? Number.MAX_SAFE_INTEGER;
+
+      if (sortA !== sortB) return sortA - sortB;
+
+      const categoryCompare = (categoryA?.name ?? "").localeCompare(
+        categoryB?.name ?? "",
+        "id",
+      );
+      if (categoryCompare !== 0) return categoryCompare;
+
+      const productCompare = a.product_name.localeCompare(b.product_name, "id");
+      if (productCompare !== 0) return productCompare;
+
+      return a.location_code.localeCompare(b.location_code, "id");
+    },
+    [categoryById, productById],
+  );
+
+  const sortRows = useCallback(
+    (nextRows: MatrixRow[]) => [...nextRows].sort(compareRows),
+    [compareRows],
+  );
 
   const fetchRows = useCallback(
-    async (from: number, limit: number) => {
-      const to = from + limit - 1;
+    async () => {
       return await supabase
         .rpc("fn_inventory_matrix", {
           p_date: date,
           p_location_id: locationId === "all" ? null : locationId,
-        })
-        .range(from, to);
+        });
     },
     [date, locationId, supabase],
   );
@@ -189,11 +235,12 @@ export function MatrixBoard({
     const timer = setTimeout(() => {
       void (async () => {
         setLoading(true);
+        setAllRows([]);
         setRows([]);
         setHasMore(true);
         setError(null);
 
-        const { data, error } = await fetchRows(0, pageSize);
+        const { data, error } = await fetchRows();
         if (cancelled) return;
         if (error) {
           setError(error.message);
@@ -201,9 +248,10 @@ export function MatrixBoard({
           return;
         }
 
-        const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
-        setRows(nextRows);
-        setHasMore(nextRows.length === pageSize);
+        const nextRows = sortRows(((data ?? []) as MatrixRow[]) ?? []);
+        setAllRows(nextRows);
+        setRows(nextRows.slice(0, pageSize));
+        setHasMore(nextRows.length > pageSize);
         setLoading(false);
       })();
     }, 0);
@@ -212,45 +260,40 @@ export function MatrixBoard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [fetchRows, pageSize]);
+  }, [fetchRows, pageSize, sortRows]);
 
-  const loadMore = useCallback(async () => {
+  const loadMore = useCallback(() => {
     if (pageSize === null || loadingMore || loading || !hasMore) return;
     setLoadingMore(true);
     setError(null);
 
-    const { data, error } = await fetchRows(rows.length, pageSize);
-    if (error) {
-      setError(error.message);
-      setLoadingMore(false);
-      return;
-    }
-
-    const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
-    setRows((prev) => [...prev, ...nextRows]);
-    setHasMore(nextRows.length === pageSize);
+    const nextSize = rows.length + pageSize;
+    setRows(allRows.slice(0, nextSize));
+    setHasMore(allRows.length > nextSize);
     setLoadingMore(false);
-  }, [fetchRows, hasMore, loading, loadingMore, pageSize, rows.length]);
+  }, [allRows, hasMore, loading, loadingMore, pageSize, rows.length]);
 
   const refresh = useCallback(async () => {
     if (pageSize === null) return;
     setLoading(true);
+    setAllRows([]);
     setRows([]);
     setHasMore(true);
     setError(null);
 
-    const { data, error } = await fetchRows(0, pageSize);
+    const { data, error } = await fetchRows();
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
 
-    const nextRows = ((data ?? []) as MatrixRow[]) ?? [];
-    setRows(nextRows);
-    setHasMore(nextRows.length === pageSize);
+    const nextRows = sortRows(((data ?? []) as MatrixRow[]) ?? []);
+    setAllRows(nextRows);
+    setRows(nextRows.slice(0, pageSize));
+    setHasMore(nextRows.length > pageSize);
     setLoading(false);
-  }, [fetchRows, pageSize]);
+  }, [fetchRows, pageSize, sortRows]);
 
   useEffect(() => {
     const node = sentinelRef.current;
@@ -390,10 +433,10 @@ export function MatrixBoard({
                   Masuk
                 </TableHead>
                 <TableHead className={cn(stickyHeadClass, "text-right")}>
-                  Transfer in
+                  Oper in
                 </TableHead>
                 <TableHead className={cn(stickyHeadClass, "text-right")}>
-                  Transfer out
+                  Oper out
                 </TableHead>
                 <TableHead className={cn(stickyHeadClass, "text-right")}>
                   Terjual

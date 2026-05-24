@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -55,11 +55,6 @@ type BatchRow = {
 };
 
 const FILTER_KEY = "stock-board:filters";
-const ESTIMATED_ROW_HEIGHT = 73;
-const MIN_PAGE_SIZE = 8;
-const OVERSCAN_ROWS = 4;
-const stickyHeadClass =
-  "sticky top-0 z-10 bg-card shadow-[0_1px_0_var(--border)]";
 
 type FilterState = { locationId: string | "all" };
 
@@ -76,46 +71,11 @@ function readSavedFilter(): FilterState | null {
   return null;
 }
 
-function cycleLocation(
-  locations: Array<{ id: string }>,
-  current: string | "all",
-  direction: -1 | 1,
-): string | "all" {
-  if (locations.length === 0) return "all";
-  const ids: Array<string | "all"> = ["all", ...locations.map((l) => l.id)];
-  const idx = ids.indexOf(current);
-  const nextIdx = idx === -1 ? 0 : (idx + direction + ids.length) % ids.length;
-  return ids[nextIdx];
-}
-
-function formatCountdownDuration(diffMs: number): string {
-  const totalMinutes = Math.max(0, Math.floor(Math.abs(diffMs) / 60000));
-  if (totalMinutes < 1) return "<1m";
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) return `${days}h ${hours}j`;
-  if (hours > 0) return `${hours}j ${minutes}m`;
-  return `${minutes}m`;
-}
-
-function getExpiryCountdown(
-  expiresAt: string | null,
-  nowMs: number | null,
-): { label: string; expired: boolean } | null {
-  if (!expiresAt || nowMs === null) return null;
-  const expiresMs = new Date(expiresAt).getTime();
-  if (!Number.isFinite(expiresMs)) return null;
-
-  const diffMs = expiresMs - nowMs;
-  return {
-    label: `${diffMs < 0 ? "Lewat" : "Sisa"} ${formatCountdownDuration(diffMs)}`,
-    expired: diffMs < 0,
-  };
-}
-
-export function StockBoard() {
+export function StockBoard({
+  defaultLocationId,
+}: {
+  defaultLocationId: string | null;
+}) {
   // Master data dari layout provider — tidak fetch ulang per navigasi.
   const master = useMasterData();
   const locations = master.locations;
@@ -124,28 +84,24 @@ export function StockBoard() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   // Init dengan server value saja — localStorage di-sync via useEffect
   // supaya tidak menyebabkan hydration mismatch (server vs client).
-  const [locationId, setLocationId] = useState<string | "all">("all");
+  const [locationId, setLocationId] = useState<string | "all">(
+    defaultLocationId ?? "all",
+  );
 
   // Sync filter dari localStorage setelah mount (client-only).
   useEffect(() => {
-    const saved = readSavedFilter();
-    if (!saved?.locationId) return;
-    const timer = window.setTimeout(() => {
-      setLocationId(saved.locationId);
+    const syncId = window.setTimeout(() => {
+      const saved = readSavedFilter();
+      if (saved?.locationId) {
+        setLocationId(saved.locationId);
+      }
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => window.clearTimeout(syncId);
   }, []);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [rows, setRows] = useState<StockRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expiredCount, setExpiredCount] = useState(0);
-  const [pageSize, setPageSize] = useState<number | null>(null);
-  const [nowMs, setNowMs] = useState<number | null>(null);
-  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Persist filter.
   useEffect(() => {
@@ -156,177 +112,33 @@ export function StockBoard() {
     );
   }, [locationId]);
 
-  useEffect(() => {
-    const updateNow = () => setNowMs(Date.now());
-    const timer = window.setTimeout(updateNow, 0);
-    const interval = window.setInterval(updateNow, 60000);
-    return () => {
-      window.clearTimeout(timer);
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  const fetchRows = useCallback(
-    async (from: number, limit: number) => {
-      const to = from + limit - 1;
-      let query = supabase
-        .from("v_stock_per_location")
-        .select(
-          "product_id, sku, product_name, unit, is_perishable, category_id, category_name, category_icon, category_color, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
-        )
-        .order("product_name", { ascending: true })
-        .order("sku", { ascending: true })
-        .order("location_code", { ascending: true })
-        .range(from, to);
-
-      if (locationId !== "all") query = query.eq("location_id", locationId);
-      if (categoryFilter === "none") query = query.is("category_id", null);
-      else if (categoryFilter !== "all") {
-        query = query.eq("category_id", categoryFilter);
-      }
-
-      return await query;
-    },
-    [categoryFilter, locationId, supabase],
-  );
-
-  const fetchExpiredCount = useCallback(async () => {
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     let query = supabase
       .from("v_stock_per_location")
-      .select("product_id", { count: "exact", head: true })
-      .eq("is_perishable", true)
-      .lt("nearest_expiry", new Date().toISOString());
-
+      .select(
+        "product_id, sku, product_name, unit, is_perishable, category_id, category_name, category_icon, category_color, location_id, location_code, location_name, total_qty, active_batches, nearest_expiry, oldest_produced_at",
+      )
+      .order("product_name", { ascending: true });
     if (locationId !== "all") query = query.eq("location_id", locationId);
-    if (categoryFilter === "none") query = query.is("category_id", null);
-    else if (categoryFilter !== "all") {
-      query = query.eq("category_id", categoryFilter);
-    }
 
-    const { count, error } = await query;
-    return error ? null : (count ?? 0);
-  }, [categoryFilter, locationId, supabase]);
-
-  useEffect(() => {
-    const node = scrollAreaRef.current;
-    if (!node) return;
-
-    let frame: number | null = null;
-    const measure = () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const visibleRows = Math.ceil(node.clientHeight / ESTIMATED_ROW_HEIGHT);
-        const next = Math.max(MIN_PAGE_SIZE, visibleRows + OVERSCAN_ROWS);
-        setPageSize((prev) => (prev === next ? prev : next));
-      });
-    };
-
-    measure();
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(node);
-
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (pageSize === null) return;
-
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void (async () => {
-        setLoading(true);
-        setRows([]);
-        setHasMore(true);
-        setError(null);
-        scrollAreaRef.current?.scrollTo({ top: 0 });
-
-        const [{ data, error }, nextExpiredCount] = await Promise.all([
-          fetchRows(0, pageSize),
-          fetchExpiredCount(),
-        ]);
-        if (cancelled) return;
-        if (nextExpiredCount !== null) setExpiredCount(nextExpiredCount);
-        if (error) {
-          setError(error.message);
-          setLoading(false);
-          return;
-        }
-
-        const nextRows = (data ?? []) as StockRow[];
-        setRows(nextRows);
-        setHasMore(nextRows.length === pageSize);
-        setLoading(false);
-      })();
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [fetchExpiredCount, fetchRows, pageSize]);
-
-  const loadMore = useCallback(async () => {
-    if (pageSize === null || loadingMore || loading || !hasMore) return;
-    setLoadingMore(true);
-    setError(null);
-
-    const { data, error } = await fetchRows(rows.length, pageSize);
-    if (error) {
-      setError(error.message);
-      setLoadingMore(false);
-      return;
-    }
-
-    const nextRows = (data ?? []) as StockRow[];
-    setRows((prev) => [...prev, ...nextRows]);
-    setHasMore(nextRows.length === pageSize);
-    setLoadingMore(false);
-  }, [fetchRows, hasMore, loading, loadingMore, pageSize, rows.length]);
-
-  const refresh = useCallback(async () => {
-    if (pageSize === null) return;
-    setLoading(true);
-    setRows([]);
-    setHasMore(true);
-    setError(null);
-    scrollAreaRef.current?.scrollTo({ top: 0 });
-
-    const [{ data, error }, nextExpiredCount] = await Promise.all([
-      fetchRows(0, pageSize),
-      fetchExpiredCount(),
-    ]);
-    if (nextExpiredCount !== null) setExpiredCount(nextExpiredCount);
+    const { data, error } = await query;
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-
-    const nextRows = (data ?? []) as StockRow[];
-    setRows(nextRows);
-    setHasMore(nextRows.length === pageSize);
+    setRows((data ?? []) as StockRow[]);
     setLoading(false);
-  }, [fetchExpiredCount, fetchRows, pageSize]);
+  }, [supabase, locationId]);
 
+  // Bridge ke Supabase (sumber EXTERNAL): setState di sini intentional.
+  // Lihat https://react.dev/reference/react/useEffect#fetching-data-with-effects
   useEffect(() => {
-    const node = sentinelRef.current;
-    const root = scrollAreaRef.current;
-    if (!node || !root) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void loadMore();
-        }
-      },
-      { root, rootMargin: "240px 0px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [loadMore]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [refresh]);
 
   // Realtime: any batch / movement change → re-fetch view.
   useEffect(() => {
@@ -349,22 +161,17 @@ export function StockBoard() {
     };
   }, [supabase, refresh]);
 
+  const filteredRows = useMemo(() => {
+    if (categoryFilter === "all") return rows;
+    return rows.filter((r) => {
+      if (categoryFilter === "none") return r.category_id == null;
+      return r.category_id === categoryFilter;
+    });
+  }, [rows, categoryFilter]);
+
   return (
-    <div className="flex h-[calc(100dvh-10.5rem)] min-h-[26rem] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
-      <div className="sticky top-0 z-20 flex flex-shrink-0 flex-col gap-3 bg-background pb-2">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-end gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Lokasi sebelumnya"
-              onClick={() =>
-                setLocationId((cur) => cycleLocation(locations, cur, -1))
-              }
-              disabled={locations.length === 0}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Lokasi</span>
           <Select
@@ -382,25 +189,10 @@ export function StockBoard() {
             ))}
           </Select>
         </label>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Lokasi berikutnya"
-              onClick={() =>
-                setLocationId((cur) => cycleLocation(locations, cur, +1))
-              }
-              disabled={locations.length === 0}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
         <Button variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Muat ulang
         </Button>
-        <p className="ml-auto text-xs text-muted-foreground">
-          {rows.length} produk dimuat
-        </p>
       </div>
 
       {/* Filter kategori */}
@@ -462,56 +254,24 @@ export function StockBoard() {
           </button>
         </div>
       ) : null}
-      </div>
 
-      {error ? (
-        <p className="flex-shrink-0 text-sm text-destructive">{error}</p>
-      ) : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      {expiredCount > 0 ? (
-        <div className="flex flex-shrink-0 items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <div>
-            <p className="font-medium">
-              {expiredCount} produk aktif sudah melewati masa expired.
-            </p>
-            <p className="mt-0.5 text-xs text-destructive/80">
-              Gunakan aksi Buang stok untuk mencatat stok expired.
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
-        <div ref={scrollAreaRef} className="h-full overflow-auto">
-          <table className="w-full min-w-[68rem] caption-bottom text-sm">
+      <div className="rounded-xl border bg-card">
+        <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className={stickyHeadClass}>Produk</TableHead>
-              <TableHead className={stickyHeadClass}>Kategori</TableHead>
-              <TableHead className={stickyHeadClass}>Lokasi</TableHead>
-              <TableHead className={cn(stickyHeadClass, "text-right")}>
-                Total stok
-              </TableHead>
-              <TableHead className={cn(stickyHeadClass, "text-right")}>
-                Batch
-              </TableHead>
-              <TableHead className={stickyHeadClass}>Expired terdekat</TableHead>
-              <TableHead className={cn(stickyHeadClass, "text-right")}>
-                Aksi
-              </TableHead>
+              <TableHead>Produk</TableHead>
+              <TableHead>Kategori</TableHead>
+              <TableHead>Lokasi</TableHead>
+              <TableHead className="text-right">Total stok</TableHead>
+              <TableHead className="text-right">Batch</TableHead>
+              <TableHead>Expired terdekat</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
-              Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={7} className="py-4">
-                    <div className="h-5 animate-pulse rounded bg-muted" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : rows.length === 0 ? (
+            {!loading && filteredRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10">
                   <EmptyState
@@ -521,22 +281,13 @@ export function StockBoard() {
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((r) => {
+              filteredRows.map((r) => {
                 const product = master.productById.get(r.product_id);
                 const warningHours = product?.expiry_warning_hours ?? 24;
-                const countdown = getExpiryCountdown(r.nearest_expiry, nowMs);
-                const hoursToExpiry = r.nearest_expiry
-                  ? hoursBetween(new Date(), r.nearest_expiry)
-                  : null;
-                const isExpired =
-                  r.is_perishable &&
-                  (countdown?.expired ??
-                    (hoursToExpiry !== null && hoursToExpiry < 0));
                 const isWarning =
                   r.is_perishable &&
-                  !isExpired &&
-                  hoursToExpiry !== null &&
-                  hoursToExpiry <= warningHours;
+                  r.nearest_expiry &&
+                  hoursBetween(new Date(), r.nearest_expiry) <= warningHours;
                 return (
                   <TableRow key={`${r.product_id}-${r.location_id}`}>
                     <TableCell>
@@ -584,37 +335,22 @@ export function StockBoard() {
                     <TableCell>
                       {r.is_perishable ? (
                         <span className="flex items-center gap-2">
-                          {isExpired || isWarning ? (
+                          {isWarning ? (
                             <AlertTriangle
-                              aria-label={
-                                isExpired
-                                  ? "Sudah expired"
-                                  : "Mendekati kedaluwarsa"
-                              }
-                              className={cn(
-                                "h-4 w-4",
-                                isExpired ? "text-destructive" : "text-warning",
-                              )}
+                              aria-label="Mendekati kedaluwarsa"
+                              className="h-4 w-4 text-warning"
                             />
                           ) : null}
                           <span
                             className={cn(
                               "text-sm",
-                              isExpired && "font-medium text-destructive",
                               isWarning &&
                                 "font-medium text-warning-foreground",
                             )}
                           >
                             {formatDateTime(r.nearest_expiry)}
                           </span>
-                          {countdown ? (
-                            <Badge variant={isExpired ? "danger" : "muted"}>
-                              {countdown.label}
-                            </Badge>
-                          ) : null}
-                          {isExpired ? (
-                            <Badge variant="danger">Expired</Badge>
-                          ) : isWarning && product?.expiry_discount_percent ? (
+                          {isWarning && product?.expiry_discount_percent ? (
                             <Badge variant="warning">
                               Saran diskon{" "}
                               {Math.round(product.expiry_discount_percent)}%
@@ -643,7 +379,6 @@ export function StockBoard() {
                           locationLabel={`${r.location_code} — ${r.location_name}`}
                           unit={r.unit}
                           isPerishable={r.is_perishable}
-                          onSuccess={() => void refresh()}
                         />
                       </div>
                     </TableCell>
@@ -652,19 +387,7 @@ export function StockBoard() {
               })
             )}
           </TableBody>
-          </table>
-
-          <div ref={sentinelRef} className="h-6" />
-          {!loading && rows.length > 0 ? (
-            <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
-              {loadingMore
-                ? "Memuat produk berikutnya..."
-                : hasMore
-                  ? "Gulir tabel untuk memuat lagi"
-                  : "Semua data sudah dimuat"}
-            </div>
-          ) : null}
-        </div>
+        </Table>
       </div>
     </div>
   );

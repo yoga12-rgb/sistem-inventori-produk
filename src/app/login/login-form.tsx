@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,6 +19,7 @@ type FormValues = z.infer<typeof schema>;
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -41,8 +43,9 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Field label="Email" error={errors.email?.message}>
+      <Field label="Email" htmlFor="email" error={errors.email?.message}>
         <input
+          id="email"
           type="email"
           autoComplete="email"
           inputMode="email"
@@ -51,13 +54,35 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         />
       </Field>
 
-      <Field label="Password" error={errors.password?.message}>
-        <input
-          type="password"
-          autoComplete="current-password"
-          className="input"
-          {...register("password")}
-        />
+      <Field
+        label="Password"
+        htmlFor="password"
+        error={errors.password?.message}
+      >
+        <div className="relative">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            className="input pr-11"
+            {...register("password")}
+          />
+          <button
+            type="button"
+            aria-label={
+              showPassword ? "Sembunyikan password" : "Tampilkan password"
+            }
+            title={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+          >
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </Field>
 
       {serverError ? (
@@ -97,20 +122,24 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
 function Field({
   label,
+  htmlFor,
   error,
   children,
 }: {
   label: string;
+  htmlFor: string;
   error?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 text-sm">
-      <span className="font-medium">{label}</span>
+    <div className="flex flex-col gap-1.5 text-sm">
+      <label htmlFor={htmlFor} className="font-medium">
+        {label}
+      </label>
       {children}
       {error ? (
         <span className="text-xs text-destructive">{error}</span>
       ) : null}
-    </label>
+    </div>
   );
 }
