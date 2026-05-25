@@ -11,27 +11,26 @@ export default async function InitialStockPage() {
   await requireSuperAdmin();
 
   const { locations, products } = await getMasterData();
-  const outletLocations = locations.filter((l) => l.type === "outlet");
 
-  if (outletLocations.length === 0 || products.length === 0) {
+  if (locations.length === 0 || products.length === 0) {
     return (
       <div className="space-y-6">
         <EmptyState
-          icon={outletLocations.length === 0 ? Building2 : Package}
+          icon={locations.length === 0 ? Building2 : Package}
           title={
-            outletLocations.length === 0
-              ? "Belum ada outlet aktif"
+            locations.length === 0
+              ? "Belum ada lokasi aktif"
               : "Belum ada produk aktif"
           }
           description={
-            outletLocations.length === 0
-              ? "Buat outlet di Master Data sebelum mengisi stok awal."
+            locations.length === 0
+              ? "Buat lokasi di Master Data sebelum mengisi stok awal."
               : "Tambahkan minimal satu produk di Master Produk."
           }
           action={
             <Link
               href={
-                outletLocations.length === 0
+                locations.length === 0
                   ? "/master/outlets"
                   : "/master/products"
               }
@@ -51,7 +50,7 @@ export default async function InitialStockPage() {
         <InitialStockForm
           products={products}
           locations={locations}
-          defaultLocationId={outletLocations[0]?.id ?? ""}
+          defaultLocationId={locations[0]?.id ?? ""}
         />
       </div>
     </div>

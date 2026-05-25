@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 // ---------- Schema ---------------------------------------------------------
 
 const initialStockItemSchema = z.object({
-  location_id: z.string().uuid("Pilih outlet"),
+  location_id: z.string().uuid("Pilih lokasi"),
   product_id: z.string().uuid("Pilih produk"),
   quantity: z
     .number({ message: "Harus angka" })
@@ -34,8 +34,6 @@ export type InitialStockState = {
   /** Error per item (index) */
   itemErrors?: { index: number; message: string }[];
 };
-
-// ---------- Helper: FormDataEntryValue → number ----------------------------
 
 // ---------- Server action --------------------------------------------------
 
@@ -99,7 +97,7 @@ export async function recordInitialStockAction(
 
   if (errors.length > 0) {
     return {
-      ok: successCount > 0,
+      ok: false,
       message: `${successCount} item berhasil dicatat, ${errors.length} gagal.`,
       successCount,
       itemErrors: errors,

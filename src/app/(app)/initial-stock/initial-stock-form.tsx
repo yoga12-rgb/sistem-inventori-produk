@@ -37,6 +37,10 @@ function toLocalDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+function localDateStartIso(date: string): string {
+  return new Date(`${date}T00:00`).toISOString();
+}
+
 function createEmptyRow(uid: string, locationId: string): LineItem {
   return {
     uid,
@@ -109,12 +113,19 @@ export function InitialStockForm({
     return map;
   }, [products]);
 
-  const outletLocations = useMemo(
-    () => locations.filter((l) => l.type === "outlet"),
-    [locations],
-  );
-
   const addRow = () => setItems((prev) => [...prev, makeEmptyRow(nextUid())]);
+
+  useEffect(() => {
+    if (state.ok || !state.itemErrors?.length || !state.successCount) return;
+    const failedIndexes = new Set(state.itemErrors.map((error) => error.index));
+    const trimId = window.setTimeout(() => {
+      setItems((prev) => {
+        const failedRows = prev.filter((_, index) => failedIndexes.has(index));
+        return failedRows.length > 0 ? failedRows : prev;
+      });
+    }, 0);
+    return () => window.clearTimeout(trimId);
+  }, [state.itemErrors, state.ok, state.successCount]);
 
   const removeRow = (uid: string) =>
     setItems((prev) =>
@@ -171,7 +182,7 @@ export function InitialStockForm({
       : undefined;
     const qty = Number(row.quantity);
     let error: string | null = null;
-    if (!row.location_id) error = "Pilih outlet";
+    if (!row.location_id) error = "Pilih lokasi";
     else if (!row.product_id) error = "Pilih produk";
     else if (!Number.isFinite(qty) || qty <= 0) error = "Qty min. 1";
     else if (!Number.isInteger(qty)) error = "Qty harus bilangan bulat";
@@ -200,9 +211,7 @@ export function InitialStockForm({
           quantity: Number(i.quantity),
           produced_at:
             product?.is_perishable && i.produced_at
-              ? new Date(
-                  `${i.produced_at}T${new Date().toTimeString().slice(0, 5)}`,
-                ).toISOString()
+              ? localDateStartIso(i.produced_at)
               : product?.is_perishable
                 ? new Date().toISOString()
                 : null,
@@ -251,9 +260,9 @@ export function InitialStockForm({
                 className="grid gap-3 rounded-lg border bg-background/50 p-3 sm:grid-cols-[1fr_1fr_100px_1fr_1fr_auto] sm:items-start"
               >
                 <FormField
-                  label={`Outlet ${idx + 1}`}
+                  label={`Lokasi ${idx + 1}`}
                   htmlFor={`loc-${row.uid}`}
-                  error={row.location_id ? undefined : "Pilih outlet"}
+                  error={row.location_id ? undefined : "Pilih lokasi"}
                 >
                   <Select
                     id={`loc-${row.uid}`}
@@ -262,7 +271,7 @@ export function InitialStockForm({
                       updateRow(row.uid, { location_id: e.currentTarget.value })
                     }
                   >
-                    {outletLocations.map((l) => (
+                    {locations.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.code} — {l.name}
                       </option>
