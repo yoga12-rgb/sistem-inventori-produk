@@ -176,8 +176,11 @@ export function TransferNotifier({
           table: "transfers",
           filter: `to_location_id=eq.${myOutletId}`,
         },
-        (payload) => {
-          const t = payload.new as TransferRow;
+        (payload: {
+          new: Record<string, unknown>;
+          old: Record<string, unknown>;
+        }) => {
+          const t = payload.new as unknown as TransferRow;
           const kind = classifyIncomingInsert(t);
           if (kind) notify(t, kind);
         },
@@ -190,9 +193,12 @@ export function TransferNotifier({
           table: "transfers",
           filter: `to_location_id=eq.${myOutletId}`,
         },
-        (payload) => {
-          const t = payload.new as TransferRow;
-          const prev = payload.old as Partial<TransferRow>;
+        (payload: {
+          new: Record<string, unknown>;
+          old: Record<string, unknown>;
+        }) => {
+          const t = payload.new as unknown as TransferRow;
+          const prev = payload.old as unknown as Partial<TransferRow>;
           const kind = classifyIncomingUpdate(t, prev);
           if (kind) notify(t, kind);
         },
@@ -209,9 +215,12 @@ export function TransferNotifier({
           table: "transfers",
           filter: `from_location_id=eq.${myOutletId}`,
         },
-        (payload) => {
-          const t = payload.new as TransferRow;
-          const prev = payload.old as Partial<TransferRow>;
+        (payload: {
+          new: Record<string, unknown>;
+          old: Record<string, unknown>;
+        }) => {
+          const t = payload.new as unknown as TransferRow;
+          const prev = payload.old as unknown as Partial<TransferRow>;
           const kind = classifyOutgoingUpdate(t, prev);
           if (kind) notify(t, kind);
         },

@@ -32,10 +32,15 @@ function getSupabaseConnectSrc(): string {
   return src.join(" ");
 }
 
+// React development mode memerlukan eval() untuk debugging features
+// (reconstructing callstacks). Di production, eval tidak diperlukan.
+const isDev = process.env.NODE_ENV === "development";
 const csp = [
   "default-src 'self'",
   `connect-src ${getSupabaseConnectSrc()}`,
-  "script-src 'self' 'unsafe-inline'",
+  isDev
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",

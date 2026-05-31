@@ -4,11 +4,23 @@ import { createBrowserClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env";
 
 /**
- * Browser-side Supabase client. Use inside Client Components and hooks.
+ * Browser-side Supabase client — SINGLETON.
  *
- * For Realtime subscriptions, instantiate once per component lifecycle
- * and clean up the channel in a `useEffect` return.
+ * Hanya satu instance per tab untuk menghindari race condition refresh token
+ * (409 "Too many concurrent token refresh requests").
+ *
+ * Untuk Realtime subscriptions, gunakan channel per component lifecycle
+ * dan bersihkan di `useEffect` return — client-nya tetap yang sama.
  */
+
+let _browserClient: ReturnType<typeof createBrowserClient> | null = null;
+
 export function createSupabaseBrowserClient() {
-  return createBrowserClient(publicEnv.supabaseUrl, publicEnv.supabaseAnonKey);
+  if (!_browserClient) {
+    _browserClient = createBrowserClient(
+      publicEnv.supabaseUrl,
+      publicEnv.supabaseAnonKey,
+    );
+  }
+  return _browserClient;
 }
