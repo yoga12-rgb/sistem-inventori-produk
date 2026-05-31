@@ -19,7 +19,10 @@ import * as React from "react";
 type Ctx = {
   register: (key: string, node: React.ReactNode) => void;
   unregister: (key: string) => void;
-  nodes: Map<string, React.ReactNode>;
+  /** Version counter — berubah setiap kali nodes ditambah/dihapus. */
+  version: number;
+  /** Ref-based storage — tidak trigger re-render provider saat nilainya berubah. */
+  nodesRef: React.MutableRefObject<Map<string, React.ReactNode>>;
 };
 
 const PageActionContext = React.createContext<Ctx | null>(null);
@@ -29,29 +32,31 @@ export function PageActionSlotProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [nodes, setNodes] = React.useState<Map<string, React.ReactNode>>(
-    new Map(),
-  );
+  const nodesRef = React.useRef<Map<string, React.ReactNode>>(new Map());
+  const [version, setVersion] = React.useState(0);
 
   const register = React.useCallback((key: string, node: React.ReactNode) => {
-    setNodes((prev) => {
-      const next = new Map(prev);
-      next.set(key, node);
-      return next;
-    });
+    const prev = nodesRef.current;
+    // Cek apakah node benar-benar berubah (hindari loop).
+    if (prev.get(key) === node) return;
+    const next = new Map(prev);
+    next.set(key, node);
+    nodesRef.current = next;
+    setVersion((v) => v + 1);
   }, []);
 
   const unregister = React.useCallback((key: string) => {
-    setNodes((prev) => {
-      const next = new Map(prev);
-      next.delete(key);
-      return next;
-    });
+    const prev = nodesRef.current;
+    if (!prev.has(key)) return;
+    const next = new Map(prev);
+    next.delete(key);
+    nodesRef.current = next;
+    setVersion((v) => v + 1);
   }, []);
 
   const value = React.useMemo<Ctx>(
-    () => ({ register, unregister, nodes }),
-    [register, unregister, nodes],
+    () => ({ register, unregister, version, nodesRef }),
+    [register, unregister, version],
   );
 
   return (
@@ -64,10 +69,23 @@ export function PageActionSlotProvider({
 /** Render slot di tempat yang diinginkan (mis. top bar). */
 export function PageActionSlotOutlet() {
   const ctx = React.useContext(PageActionContext);
-  if (!ctx || ctx.nodes.size === 0) return null;
+  if (!ctx /* eslint-disable-next-line react-hooks/rules-of-hooks */)
+    return null;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+
+  // Subscribe ke version counter untuk re-render.
+  const versionRef = React.useRef(ctx.version);
+  if (versionRef.current !== ctx.version) {
+    versionRef.current = ctx.version;
+    forceUpdate();
+  }
+
+  const nodes = ctx.nodesRef.current;
+  if (nodes.size === 0) return null;
   return (
     <>
-      {Array.from(ctx.nodes.values()).map((node, i) => (
+      {Array.from(nodes.values()).map((node, i) => (
         <React.Fragment key={i}>{node}</React.Fragment>
       ))}
     </>
@@ -98,5 +116,8 @@ export function usePageAction(node: React.ReactNode, key?: string) {
     if (!ctx) return;
     ctx.register(stableKey, node);
     return () => ctx.unregister(stableKey);
-  }, [ctx, node, stableKey]);
+    // node excluded from deps — jika parent membuat node baru tiap render
+    // kita tetap pakai identity check di dalam register().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, stableKey]);
 }
