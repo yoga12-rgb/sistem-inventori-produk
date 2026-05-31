@@ -14,18 +14,22 @@ import * as React from "react";
  *
  * Multi-action: gunakan `key` berbeda untuk tiap <RegisterPageAction>.
  * Jika tidak diberikan key, digunakan auto-increment counter.
+ *
+ * Arsitektur:
+ *   - register/unregister = stable callbacks (useCallback [])
+ *   - nodes = disimpan di useRef, tidak trigger re-render
+ *   - version = useState bump untuk notifikasi ke outlet via KONTEKS TERPISAH
+ *     supaya usePageAction tidak re-run setiap version berubah
  */
 
-type Ctx = {
+type ActionsCtx = {
   register: (key: string, node: React.ReactNode) => void;
   unregister: (key: string) => void;
-  /** Version counter — berubah setiap kali nodes ditambah/dihapus. */
-  version: number;
-  /** Ref-based storage — tidak trigger re-render provider saat nilainya berubah. */
   nodesRef: React.MutableRefObject<Map<string, React.ReactNode>>;
 };
 
-const PageActionContext = React.createContext<Ctx | null>(null);
+const ActionsContext = React.createContext<ActionsCtx | null>(null);
+const VersionContext = React.createContext(0);
 
 export function PageActionSlotProvider({
   children,
@@ -37,12 +41,17 @@ export function PageActionSlotProvider({
 
   const register = React.useCallback((key: string, node: React.ReactNode) => {
     const prev = nodesRef.current;
-    // Cek apakah node benar-benar berubah (hindari loop).
-    if (prev.get(key) === node) return;
-    const next = new Map(prev);
-    next.set(key, node);
-    nodesRef.current = next;
-    setVersion((v) => v + 1);
+    if (!prev.has(key)) {
+      // Key baru: bump version agar outlet re-render.
+      const next = new Map(prev);
+      next.set(key, node);
+      nodesRef.current = next;
+      setVersion((v) => v + 1);
+    } else {
+      // Key sudah ada: update node secara in-place. Outlet tidak
+      // re-render (konten tombol jarang berubah setelah mount).
+      prev.set(key, node);
+    }
   }, []);
 
   const unregister = React.useCallback((key: string) => {
@@ -54,33 +63,27 @@ export function PageActionSlotProvider({
     setVersion((v) => v + 1);
   }, []);
 
-  const value = React.useMemo<Ctx>(
-    () => ({ register, unregister, version, nodesRef }),
-    [register, unregister, version],
+  const ctxValue = React.useMemo<ActionsCtx>(
+    () => ({ register, unregister, nodesRef }),
+    [register, unregister],
   );
 
   return (
-    <PageActionContext.Provider value={value}>
-      {children}
-    </PageActionContext.Provider>
+    <ActionsContext.Provider value={ctxValue}>
+      <VersionContext.Provider value={version}>
+        {children}
+      </VersionContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
 /** Render slot di tempat yang diinginkan (mis. top bar). */
 export function PageActionSlotOutlet() {
-  const ctx = React.useContext(PageActionContext);
-  if (!ctx /* eslint-disable-next-line react-hooks/rules-of-hooks */)
-    return null;
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+  const ctx = React.useContext(ActionsContext);
+  // Membaca version dari context terpisah — trigger re-render di sini.
+  React.useContext(VersionContext);
 
-  // Subscribe ke version counter untuk re-render.
-  const versionRef = React.useRef(ctx.version);
-  if (versionRef.current !== ctx.version) {
-    versionRef.current = ctx.version;
-    forceUpdate();
-  }
-
+  if (!ctx) return null;
   const nodes = ctx.nodesRef.current;
   if (nodes.size === 0) return null;
   return (
@@ -103,21 +106,23 @@ let _nextKey = 0;
  *               memiliki beberapa tombol aksi sekaligus.
  */
 export function usePageAction(node: React.ReactNode, key?: string) {
-  const ctx = React.useContext(PageActionContext);
+  const ctx = React.useContext(ActionsContext);
 
-  // Stable key: user-provided atau auto-increment.
   const stableKey = React.useMemo(() => {
     if (key) return key;
     return `_pa_${++_nextKey}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Destructure untuk referensi stabil — register/unregister adalah
+  // useCallback([]) jadi tidak akan berubah sepanjang lifetime.
+  const register = ctx?.register;
+  const unregister = ctx?.unregister;
+
   React.useEffect(() => {
-    if (!ctx) return;
-    ctx.register(stableKey, node);
-    return () => ctx.unregister(stableKey);
-    // node excluded from deps — jika parent membuat node baru tiap render
-    // kita tetap pakai identity check di dalam register().
+    if (!register || !unregister) return;
+    register(stableKey, node);
+    return () => unregister(stableKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, stableKey]);
+  }, [register, unregister, stableKey]);
 }
