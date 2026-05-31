@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -138,7 +139,7 @@ function EditQtyModal({ row, onClose }: { row: Row; onClose: () => void }) {
 
   // Jika batch sudah habis (voided/0), jangan tampilkan form edit
   if (row.batch && row.batch.remaining_qty <= 0) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
         <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
           <div className="mb-4 flex items-center justify-between">
@@ -161,11 +162,12 @@ function EditQtyModal({ row, onClose }: { row: Row; onClose: () => void }) {
             </Button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
@@ -230,7 +232,8 @@ function EditQtyModal({ row, onClose }: { row: Row; onClose: () => void }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -664,110 +667,115 @@ export function ProductionHistory({
       <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
         <div ref={scrollAreaRef} className="h-full overflow-auto">
           <table className="w-full min-w-[68rem] caption-bottom text-sm">
-          <TableHeader>
-            <TableRow>
-              <TableHead className={stickyHeadClass}>Waktu</TableHead>
-              <TableHead className={stickyHeadClass}>Produk</TableHead>
-              <TableHead className={stickyHeadClass}>Lokasi</TableHead>
-              <TableHead className={cn(stickyHeadClass, "text-right")}>
-                Qty
-              </TableHead>
-              <TableHead className={stickyHeadClass}>Kedaluwarsa</TableHead>
-              <TableHead className={stickyHeadClass}>Aktor</TableHead>
-              <TableHead className={stickyHeadClass}>Catatan</TableHead>
-              <TableHead className={cn(stickyHeadClass, "w-20")}>
-                Aksi
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={8} className="py-4">
-                    <div className="h-5 animate-pulse rounded bg-muted" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : rows.length === 0 ? (
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={8} className="py-10">
-                  <EmptyState
-                    title="Belum ada produksi"
-                    description="Tidak ada batch yang diproduksi pada filter ini. Coba tanggal lain atau ganti lokasi."
-                  />
-                </TableCell>
+                <TableHead className={stickyHeadClass}>Waktu</TableHead>
+                <TableHead className={stickyHeadClass}>Produk</TableHead>
+                <TableHead className={stickyHeadClass}>Lokasi</TableHead>
+                <TableHead className={cn(stickyHeadClass, "text-right")}>
+                  Qty
+                </TableHead>
+                <TableHead className={stickyHeadClass}>Kedaluwarsa</TableHead>
+                <TableHead className={stickyHeadClass}>Aktor</TableHead>
+                <TableHead className={stickyHeadClass}>Catatan</TableHead>
+                <TableHead className={cn(stickyHeadClass, "w-20")}>
+                  Aksi
+                </TableHead>
               </TableRow>
-            ) : (
-              rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="whitespace-nowrap text-sm">
-                    {formatDateTime(r.occurred_at)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{r.product?.name ?? "—"}</div>
-                    <div className="font-mono text-xs text-muted-foreground">
-                      {r.product?.sku}
-                      {r.product?.is_perishable ? (
-                        <Badge variant="warning" className="ml-2 align-middle">
-                          Perishable
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {r.location ? (
-                      <>
-                        <div>{r.location.name}</div>
-                        <div className="font-mono text-xs text-muted-foreground">
-                          {r.location.code}
-                        </div>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
-                    {formatNumber(Number(r.batch?.initial_qty ?? r.quantity))}{" "}
-                    <span className="text-xs text-muted-foreground">
-                      {r.product?.unit}
-                    </span>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm">
-                    {r.product?.is_perishable && r.batch?.expires_at
-                      ? formatDateTime(r.batch.expires_at)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {r.actor?.full_name ?? "—"}
-                  </TableCell>
-                  <TableCell className="max-w-xs text-xs text-muted-foreground line-clamp-1">
-                    {r.notes ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        title="Edit qty"
-                        onClick={() => setEditTarget(r)}
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Hapus produksi"
-                        onClick={() => setVoidTarget(r)}
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={8} className="py-4">
+                      <div className="h-5 animate-pulse rounded bg-muted" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-10">
+                    <EmptyState
+                      title="Belum ada produksi"
+                      description="Tidak ada batch yang diproduksi pada filter ini. Coba tanggal lain atau ganti lokasi."
+                    />
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
+              ) : (
+                rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {formatDateTime(r.occurred_at)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">
+                        {r.product?.name ?? "—"}
+                      </div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {r.product?.sku}
+                        {r.product?.is_perishable ? (
+                          <Badge
+                            variant="warning"
+                            className="ml-2 align-middle"
+                          >
+                            Perishable
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {r.location ? (
+                        <>
+                          <div>{r.location.name}</div>
+                          <div className="font-mono text-xs text-muted-foreground">
+                            {r.location.code}
+                          </div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {formatNumber(Number(r.batch?.initial_qty ?? r.quantity))}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        {r.product?.unit}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {r.product?.is_perishable && r.batch?.expires_at
+                        ? formatDateTime(r.batch.expires_at)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {r.actor?.full_name ?? "—"}
+                    </TableCell>
+                    <TableCell className="max-w-xs text-xs text-muted-foreground line-clamp-1">
+                      {r.notes ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          title="Edit qty"
+                          onClick={() => setEditTarget(r)}
+                          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Hapus produksi"
+                          onClick={() => setVoidTarget(r)}
+                          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
           </table>
 
           <div ref={sentinelRef} className="h-6" />

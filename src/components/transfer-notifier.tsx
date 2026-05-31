@@ -220,11 +220,17 @@ export function TransferNotifier({
 
     // -------- 2. Polling fallback -----------------------------------
     let lastSeenAt = new Date().toISOString();
+    // Lacak status sebelumnya per transfer ID untuk mendeteksi perubahan
+    // ke cancelled/rejected (yang tidak punya kolom timestamp khusus).
+    const prevStatus = new Map<string, string>();
 
     async function pollDirection(direction: Direction) {
       const filter =
         direction === "incoming"
-          ? { eq: { to_location_id: myOutletId }, statuses: ["pending", "in_transit"] }
+          ? {
+              eq: { to_location_id: myOutletId },
+              statuses: ["pending", "in_transit"],
+            }
           : {
               eq: { from_location_id: myOutletId },
               statuses: ["received", "rejected", "cancelled"],
@@ -271,9 +277,6 @@ export function TransferNotifier({
           if (row.received_at && row.received_at > lastSeenAt) {
             if (row.status === "received") notify(row, "outgoing_received");
           }
-          // cancelled & rejected tidak punya kolom timestamp khusus,
-          // jadi kita pakai shipped_at/created_at sebagai best-effort —
-          // realtime channel tetap sumber utama untuk dua status itu.
         }
       }
 
@@ -285,6 +288,30 @@ export function TransferNotifier({
         }
         if (row.received_at && row.received_at > lastSeenAt) {
           lastSeenAt = row.received_at;
+        }
+      }
+
+      // Deteksi perubahan ke cancelled/rejected via status diff.
+      // Ambil semua transfer outgoing (tidak dibatasi watermark) untuk
+      // membandingkan status saat ini dengan status sebelumnya.
+      if (direction === "outgoing") {
+        const { data: allOutgoing } = await supabase
+          .from("transfers")
+          .select(
+            "id, code, mode, status, from_location_id, to_location_id, created_at, shipped_at, received_at",
+          )
+          .eq("from_location_id", myOutletId)
+          .in("status", ["received", "rejected", "cancelled"])
+          .limit(50);
+
+        for (const row of (allOutgoing ?? []) as TransferRow[]) {
+          const before = prevStatus.get(row.id);
+          if (before && before !== row.status) {
+            if (row.status === "rejected") notify(row, "outgoing_rejected");
+            else if (row.status === "cancelled")
+              notify(row, "outgoing_cancelled");
+          }
+          prevStatus.set(row.id, row.status);
         }
       }
     }
