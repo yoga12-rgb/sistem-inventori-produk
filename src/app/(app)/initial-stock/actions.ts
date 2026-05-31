@@ -65,8 +65,58 @@ export async function recordInitialStockAction(
   }
 
   const data = parsed.data;
+
+  // Pre-validasi: cek semua lokasi & produk valid SEBELUM menulis apapun.
+  // Ini mencegah partial failure — seluruh batch rollback di sisi klien
+  // jika ada satu pun item yang tidak valid.
   const supabase = await createSupabaseServerClient();
-  const errors: { index: number; message: string }[] = [];
+
+  const { data: validLocations } = await supabase
+    .from("locations")
+    .select("id")
+    .eq("is_active", true);
+
+  const { data: validProducts } = await supabase
+    .from("products")
+    .select("id, is_perishable")
+    .eq("is_active", true);
+
+  const locationIds = new Set((validLocations ?? []).map((l) => l.id));
+  const productMap = new Map(
+    (validProducts ?? []).map((p) => [p.id, p.is_perishable]),
+  );
+
+  const itemErrors: { index: number; message: string }[] = [];
+  for (let i = 0; i < data.items.length; i++) {
+    const item = data.items[i];
+    if (!locationIds.has(item.location_id)) {
+      itemErrors.push({
+        index: i,
+        message: "Lokasi tidak valid atau tidak aktif",
+      });
+    } else if (!productMap.has(item.product_id)) {
+      itemErrors.push({
+        index: i,
+        message: "Produk tidak valid atau tidak aktif",
+      });
+    } else if (productMap.get(item.product_id) && !item.produced_at) {
+      itemErrors.push({
+        index: i,
+        message: "Tanggal produksi wajib untuk produk perishable",
+      });
+    }
+  }
+
+  if (itemErrors.length > 0) {
+    return {
+      ok: false,
+      message: `Validasi gagal: ${itemErrors.length} item tidak valid. Tidak ada data yang disimpan.`,
+      itemErrors,
+    };
+  }
+
+  // Semua item valid — tulis sekaligus.
+  const writeErrors: { index: number; message: string }[] = [];
   let successCount = 0;
 
   for (let i = 0; i < data.items.length; i++) {
@@ -86,7 +136,7 @@ export async function recordInitialStockAction(
     });
 
     if (error) {
-      errors.push({ index: i, message: error.message });
+      writeErrors.push({ index: i, message: error.message });
     } else {
       successCount++;
     }
@@ -95,12 +145,12 @@ export async function recordInitialStockAction(
   revalidatePath("/stok");
   revalidatePath("/initial-stock");
 
-  if (errors.length > 0) {
+  if (writeErrors.length > 0) {
     return {
       ok: false,
-      message: `${successCount} item berhasil dicatat, ${errors.length} gagal.`,
+      message: `${successCount} item berhasil dicatat, ${writeErrors.length} gagal.`,
       successCount,
-      itemErrors: errors,
+      itemErrors: writeErrors,
     };
   }
 

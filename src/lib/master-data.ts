@@ -75,6 +75,8 @@ export const getMasterData = cache(async (): Promise<MasterData> => {
       .eq("is_active", true)
       .order("sort", { ascending: true })
       .order("name", { ascending: true }),
+    // Note: PostgREST memproses .order() secara berurutan sebagai
+    // ORDER BY sort ASC, name ASC (bukan diabaikan).
     supabase
       .from("products")
       .select(

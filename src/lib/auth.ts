@@ -49,8 +49,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 export async function requireSuperAdmin(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!user.profile?.is_active) redirect("/logout");
-  if (user.profile?.role !== "super_admin") {
+  if (!user.profile) redirect("/logout");
+  if (!user.profile.is_active) redirect("/logout");
+  if (user.profile.role !== "super_admin") {
     redirect("/");
   }
   return user;
@@ -63,6 +64,7 @@ export async function requireSuperAdmin(): Promise<CurrentUser> {
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!user.profile?.is_active) redirect("/logout");
+  if (!user.profile) redirect("/logout");
+  if (!user.profile.is_active) redirect("/logout");
   return user;
 }
