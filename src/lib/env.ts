@@ -15,15 +15,35 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
+/**
+ * Public environment variables — lazy-initialised agar tidak crash saat
+ * module import di build time (Next.js mungkin me-load file ini sebelum
+ * .env.local tersedia di beberapa skenario, mis. pre-rendering build).
+ */
+function initPublicEnv() {
+  return {
+    supabaseUrl: required(
+      "NEXT_PUBLIC_SUPABASE_URL",
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    ),
+    supabaseAnonKey: required(
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    ),
+  };
+}
+
+let _publicEnv: ReturnType<typeof initPublicEnv> | null = null;
+
 export const publicEnv = {
-  supabaseUrl: required(
-    "NEXT_PUBLIC_SUPABASE_URL",
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-  ),
-  supabaseAnonKey: required(
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  ),
+  get supabaseUrl() {
+    if (!_publicEnv) _publicEnv = initPublicEnv();
+    return _publicEnv.supabaseUrl;
+  },
+  get supabaseAnonKey() {
+    if (!_publicEnv) _publicEnv = initPublicEnv();
+    return _publicEnv.supabaseAnonKey;
+  },
 };
 
 /**
