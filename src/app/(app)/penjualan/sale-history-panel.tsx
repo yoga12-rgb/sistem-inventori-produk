@@ -19,6 +19,7 @@ import {
   shiftJakartaDate,
   todayJakartaIso,
 } from "@/lib/format";
+import { publicEnv } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { voidSaleAction } from "./actions";
@@ -180,6 +181,7 @@ export function SaleHistoryPanel({
   // pindah ke Kasir, channel di-unsubscribe agar tidak boros bandwidth.
   useEffect(() => {
     if (!active) return;
+    if (!publicEnv.supabaseRealtimeEnabled) return;
     let timer: number | null = null;
     const debouncedRefetch = () => {
       if (timer != null) window.clearTimeout(timer);

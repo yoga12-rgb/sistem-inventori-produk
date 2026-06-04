@@ -22,6 +22,7 @@ import {
   formatNumber,
   hoursBetween,
 } from "@/lib/format";
+import { publicEnv } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
@@ -153,6 +154,7 @@ export function StockBoard({
 
   // Realtime: any batch / movement change â†’ re-fetch view.
   useEffect(() => {
+    if (!publicEnv.supabaseRealtimeEnabled) return;
     const channel = supabase
       .channel("stock-board")
       .on(

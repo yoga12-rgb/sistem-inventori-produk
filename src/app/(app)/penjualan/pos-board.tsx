@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { useMasterData } from "@/components/master-data-provider";
+import { publicEnv } from "@/lib/env";
 import type {
   MasterCategory,
   MasterLocation,
@@ -313,6 +314,7 @@ export function PosBoard({
   // kita tetap punya fallback refetch manual setelah submit transaksi.
   useEffect(() => {
     if (!outletId) return;
+    if (!publicEnv.supabaseRealtimeEnabled) return;
     const channel = supabase
       .channel(`pos-stock-${outletId}`)
       .on(

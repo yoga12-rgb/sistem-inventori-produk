@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { publicEnv } from "@/lib/env";
 
 /**
  * Context untuk badge "transfer pending" di sidebar/topbar.
@@ -84,14 +85,16 @@ export function TransferInboxProvider({
     };
 
     // Realtime channel — di production akan trigger; di lokal idle.
-    const channel = supabase
-      .channel("transfer-inbox-counts")
-      .on(
-        "postgres_changes" as never,
-        { event: "*", schema: "public", table: "transfers" },
-        debouncedRefresh,
-      )
-      .subscribe();
+    const channel = publicEnv.supabaseRealtimeEnabled
+      ? supabase
+          .channel("transfer-inbox-counts")
+          .on(
+            "postgres_changes" as never,
+            { event: "*", schema: "public", table: "transfers" },
+            debouncedRefresh,
+          )
+          .subscribe()
+      : null;
 
     // Polling fallback (60s).
     const poll = window.setInterval(() => void refresh(), 60_000);
@@ -100,7 +103,7 @@ export function TransferInboxProvider({
       mounted = false;
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
       window.clearInterval(poll);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [supabase, myOutletId, isAdmin]);
 

@@ -36,6 +36,7 @@ import {
   shiftJakartaDate,
   todayJakartaIso,
 } from "@/lib/format";
+import { publicEnv } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -546,6 +547,7 @@ export function ProductionHistory({
   // Realtime subscribe
   useEffect(() => {
     if (!active) return;
+    if (!publicEnv.supabaseRealtimeEnabled) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const debouncedRefetch = () => {
       if (timer) clearTimeout(timer);

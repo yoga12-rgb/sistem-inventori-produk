@@ -30,6 +30,8 @@ function initPublicEnv() {
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     ),
+    supabaseRealtimeEnabled:
+      process.env.NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED !== "false",
   };
 }
 
@@ -43,6 +45,10 @@ export const publicEnv = {
   get supabaseAnonKey() {
     if (!_publicEnv) _publicEnv = initPublicEnv();
     return _publicEnv.supabaseAnonKey;
+  },
+  get supabaseRealtimeEnabled() {
+    if (!_publicEnv) _publicEnv = initPublicEnv();
+    return _publicEnv.supabaseRealtimeEnabled;
   },
 };
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { publicEnv } from "@/lib/env";
 import { useToast, type ToastVariant } from "@/components/ui/toast";
 
 type TransferStatus =
@@ -175,66 +176,70 @@ export function TransferNotifier({
     }
 
     // -------- 1. Realtime channels ----------------------------------
-    const inboxChannel = supabase
-      .channel(`transfer-inbox-${myOutletId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "transfers",
-          filter: `to_location_id=eq.${myOutletId}`,
-        },
-        (payload: {
-          new: Record<string, unknown>;
-          old: Record<string, unknown>;
-        }) => {
-          const t = payload.new as unknown as TransferRow;
-          const kind = classifyIncomingInsert(t);
-          if (kind) notify(t, kind);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "transfers",
-          filter: `to_location_id=eq.${myOutletId}`,
-        },
-        (payload: {
-          new: Record<string, unknown>;
-          old: Record<string, unknown>;
-        }) => {
-          const t = payload.new as unknown as TransferRow;
-          const prev = payload.old as unknown as Partial<TransferRow>;
-          const kind = classifyIncomingUpdate(t, prev);
-          if (kind) notify(t, kind);
-        },
-      )
-      .subscribe();
+    const inboxChannel = publicEnv.supabaseRealtimeEnabled
+      ? supabase
+          .channel(`transfer-inbox-${myOutletId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "transfers",
+              filter: `to_location_id=eq.${myOutletId}`,
+            },
+            (payload: {
+              new: Record<string, unknown>;
+              old: Record<string, unknown>;
+            }) => {
+              const t = payload.new as unknown as TransferRow;
+              const kind = classifyIncomingInsert(t);
+              if (kind) notify(t, kind);
+            },
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "transfers",
+              filter: `to_location_id=eq.${myOutletId}`,
+            },
+            (payload: {
+              new: Record<string, unknown>;
+              old: Record<string, unknown>;
+            }) => {
+              const t = payload.new as unknown as TransferRow;
+              const prev = payload.old as unknown as Partial<TransferRow>;
+              const kind = classifyIncomingUpdate(t, prev);
+              if (kind) notify(t, kind);
+            },
+          )
+          .subscribe()
+      : null;
 
-    const outboxChannel = supabase
-      .channel(`transfer-outbox-${myOutletId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "transfers",
-          filter: `from_location_id=eq.${myOutletId}`,
-        },
-        (payload: {
-          new: Record<string, unknown>;
-          old: Record<string, unknown>;
-        }) => {
-          const t = payload.new as unknown as TransferRow;
-          const prev = payload.old as unknown as Partial<TransferRow>;
-          const kind = classifyOutgoingUpdate(t, prev);
-          if (kind) notify(t, kind);
-        },
-      )
-      .subscribe();
+    const outboxChannel = publicEnv.supabaseRealtimeEnabled
+      ? supabase
+          .channel(`transfer-outbox-${myOutletId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "transfers",
+              filter: `from_location_id=eq.${myOutletId}`,
+            },
+            (payload: {
+              new: Record<string, unknown>;
+              old: Record<string, unknown>;
+            }) => {
+              const t = payload.new as unknown as TransferRow;
+              const prev = payload.old as unknown as Partial<TransferRow>;
+              const kind = classifyOutgoingUpdate(t, prev);
+              if (kind) notify(t, kind);
+            },
+          )
+          .subscribe()
+      : null;
 
     // -------- 2. Polling fallback -----------------------------------
     let lastSeenAt = new Date().toISOString();
@@ -341,8 +346,8 @@ export function TransferNotifier({
     const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
-      void supabase.removeChannel(inboxChannel);
-      void supabase.removeChannel(outboxChannel);
+      if (inboxChannel) void supabase.removeChannel(inboxChannel);
+      if (outboxChannel) void supabase.removeChannel(outboxChannel);
       clearInterval(pollTimer);
     };
   }, [supabase, myOutletId, myUserId]);
