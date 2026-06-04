@@ -17,7 +17,9 @@ import type { NextConfig } from "next";
  * Catatan: laporan CSP violation tidak di-collect (perlu Sentry/server).
  */
 
-/** Supabase URLs yang perlu di-allow di connect-src */
+const isDev = process.env.NODE_ENV === "development";
+
+/** Supabase + dev-server URLs yang perlu di-allow di connect-src */
 function getSupabaseConnectSrc(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   // Selalu izinkan *.supabase.co untuk production
@@ -29,12 +31,21 @@ function getSupabaseConnectSrc(): string {
     src.push(url, wsUrl);
   }
 
+  // Next dev/HMR bisa membuka websocket di random localhost port.
+  if (isDev) {
+    src.push(
+      "http://127.0.0.1:*",
+      "ws://127.0.0.1:*",
+      "http://localhost:*",
+      "ws://localhost:*",
+    );
+  }
+
   return src.join(" ");
 }
 
 // React development mode memerlukan eval() untuk debugging features
 // (reconstructing callstacks). Di production, eval tidak diperlukan.
-const isDev = process.env.NODE_ENV === "development";
 const csp = [
   "default-src 'self'",
   `connect-src ${getSupabaseConnectSrc()}`,
