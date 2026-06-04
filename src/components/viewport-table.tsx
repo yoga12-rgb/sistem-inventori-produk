@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -39,8 +38,8 @@ export function ViewportTable<T>({
 }) {
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const [pageSize, setPageSize] = useState<number | null>(null);
-  const [visibleCount, setVisibleCount] = useState(0);
+  const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE);
+  const [visibleCount, setVisibleCount] = useState(MIN_PAGE_SIZE);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -76,7 +75,7 @@ export function ViewportTable<T>({
   useEffect(() => {
     const node = sentinelRef.current;
     const root = scrollAreaRef.current;
-    if (!node || !root || pageSize === null) return;
+    if (!node || !root) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -126,30 +125,18 @@ export function ViewportTable<T>({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pageSize === null
-                  ? Array.from({ length: MIN_PAGE_SIZE }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell colSpan={columns.length} className="py-4">
-                          <div className="h-5 animate-pulse rounded bg-muted" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  : visibleRows.map((row) => (
-                      <TableRow key={getRowKey(row)}>
-                        {renderRow(row)}
-                      </TableRow>
-                    ))}
+                {visibleRows.map((row) => (
+                  <TableRow key={getRowKey(row)}>{renderRow(row)}</TableRow>
+                ))}
               </TableBody>
             </table>
 
             <div ref={sentinelRef} className="h-6" />
-            {pageSize !== null ? (
-              <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
-                {visibleCount < rows.length
-                  ? "Gulir tabel untuk memuat lagi"
-                  : "Semua data sudah dimuat"}
-              </div>
-            ) : null}
+            <div className="flex justify-center px-3 pb-4 text-sm text-muted-foreground">
+              {visibleCount < rows.length
+                ? "Gulir tabel untuk memuat lagi"
+                : "Semua data sudah dimuat"}
+            </div>
           </div>
         </div>
       )}
