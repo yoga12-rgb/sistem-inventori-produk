@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
@@ -120,6 +127,7 @@ function visibleNav(role: Role): NavItem[] {
 export function AppShell({
   user,
   children,
+  initialSidebarCollapsed = false,
 }: {
   user: {
     id: string;
@@ -129,42 +137,57 @@ export function AppShell({
     outletId: string | null;
   };
   children: React.ReactNode;
+  initialSidebarCollapsed?: boolean;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Toggle sidebar (desktop). State: expanded (default) ↔ collapsed (rail).
   // Saat collapsed, hover ikon menampilkan tooltip kecil — bukan expand penuh.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    initialSidebarCollapsed,
+  );
 
-  // Hydration-safe: baca localStorage setelah mount agar server & client
-  // render first-pass dengan nilai yang sama (false).
-  useEffect(() => {
-    let timer: number | null = null;
-    try {
-      if (window.localStorage.getItem("sidebar:collapsed") === "1") {
-        timer = window.setTimeout(() => setSidebarCollapsed(true), 0);
+  const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.sidebarCollapsed = collapsed
+        ? "true"
+        : "false";
+      document.cookie = `sidebar:collapsed=${collapsed ? "1" : "0"}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("sidebar:collapsed", collapsed ? "1" : "0");
+      } catch {
+        /* ignore */
       }
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    let frame: number | null = null;
+    try {
+      const stored = window.localStorage.getItem("sidebar:collapsed") === "1";
+      if (stored !== sidebarCollapsed) {
+        frame = window.requestAnimationFrame(() =>
+          setSidebarCollapsed(stored),
+        );
+      }
+      persistSidebarCollapsed(stored);
     } catch {
-      /* ignore */
+      persistSidebarCollapsed(sidebarCollapsed);
     }
     return () => {
-      if (timer != null) window.clearTimeout(timer);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [persistSidebarCollapsed, sidebarCollapsed]);
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
       const next = !prev;
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem("sidebar:collapsed", next ? "1" : "0");
-        } catch {
-          /* ignore */
-        }
-      }
+      persistSidebarCollapsed(next);
       return next;
     });
-  }, []);
+  }, [persistSidebarCollapsed]);
 
   // Saat collapsed, sidebar tetap rail. `sidebarExpanded` = invers untuk
   // dipakai render header & footer.
@@ -216,14 +239,15 @@ export function AppShell({
           expand sidebar.
       */}
         <aside
+          suppressHydrationWarning
           className={cn(
-            "sticky top-0 hidden h-dvh flex-shrink-0 flex-col border-r bg-card transition-[width] duration-200 ease-out lg:flex",
+            "app-sidebar sticky top-0 hidden h-dvh flex-shrink-0 flex-col border-r bg-card transition-[width] duration-200 ease-out lg:flex",
             sidebarCollapsed ? "w-14 overflow-visible" : "w-64 overflow-hidden",
           )}
         >
           <div
             className={cn(
-              "flex h-16 items-center gap-2 border-b",
+              "app-sidebar-header flex h-16 items-center gap-2 border-b",
               sidebarExpanded ? "justify-between px-4" : "justify-center px-2",
             )}
           >
@@ -235,7 +259,7 @@ export function AppShell({
                 <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
                   <Package className="h-4 w-4" />
                 </span>
-                <span>Inventaris</span>
+                <span className="app-sidebar-expanded-label">Inventaris</span>
               </Link>
             ) : (
               <Link href="/" aria-label="Inventaris">
@@ -256,7 +280,7 @@ export function AppShell({
                     : "Sembunyikan sidebar"
                 }
                 title={`${sidebarCollapsed ? "Pin sidebar" : "Sembunyikan sidebar"} (Ctrl+B)`}
-                className="flex-shrink-0"
+                className="app-sidebar-expanded-only flex-shrink-0"
               >
                 {sidebarCollapsed ? (
                   <PanelLeftOpen className="h-4 w-4" />
@@ -287,7 +311,7 @@ export function AppShell({
           >
             {sidebarExpanded ? (
               <>
-                <div className="mb-2 px-2">
+                <div className="app-sidebar-expanded-only mb-2 px-2">
                   <div className="text-sm font-medium leading-tight">
                     {user.fullName}
                   </div>
@@ -295,7 +319,11 @@ export function AppShell({
                     {roleLabel}
                   </div>
                 </div>
-                <form action="/logout" method="POST">
+                <form
+                  action="/logout"
+                  method="POST"
+                  className="app-sidebar-expanded-only"
+                >
                   <Button
                     variant="outline"
                     size="sm"
@@ -489,7 +517,7 @@ function SidebarLeafLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
+        "app-sidebar-expanded-nav-link flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
         nested ? "px-2.5" : "px-3",
         active
           ? "bg-accent text-accent-foreground"
@@ -497,7 +525,7 @@ function SidebarLeafLink({
       )}
     >
       <item.icon className="h-4 w-4 flex-shrink-0" />
-      <span className="truncate">{item.label}</span>
+      <span className="app-sidebar-expanded-label truncate">{item.label}</span>
       <NavBadge href={item.href} />
     </Link>
   );
@@ -513,7 +541,7 @@ function NavBadge({ href }: { href: string }) {
   const count = inbox.incoming + inbox.outgoing;
   if (count === 0) return null;
   return (
-    <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
+    <span className="app-sidebar-expanded-badge ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
       {count > 99 ? "99+" : count}
     </span>
   );

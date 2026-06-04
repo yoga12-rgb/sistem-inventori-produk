@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { AppShell } from "@/components/app-shell";
 import { MasterDataProvider } from "@/components/master-data-provider";
 import { TransferInboxProvider } from "@/components/transfer-inbox";
@@ -24,6 +25,9 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
+  const cookieStore = await cookies();
+  const sidebarCollapsed =
+    cookieStore.get("sidebar:collapsed")?.value === "1";
 
   const masterData = await getMasterData();
 
@@ -34,6 +38,7 @@ export default async function AppLayout({
         isAdmin={user.profile?.role === "super_admin"}
       >
         <AppShell
+          initialSidebarCollapsed={sidebarCollapsed}
           user={{
             id: user.id,
             email: user.email,

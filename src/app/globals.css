@@ -134,3 +134,33 @@
     touch-action: manipulation;
   }
 }
+
+/* ---------- Pre-hydration UI state ------------------------------------ */
+@media (min-width: 1024px) {
+  html[data-sidebar-collapsed="true"] .app-sidebar {
+    width: 3.5rem;
+    overflow: visible;
+  }
+
+  html[data-sidebar-collapsed="true"] .app-sidebar-header {
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  html[data-sidebar-collapsed="true"] .app-sidebar-expanded-only,
+  html[data-sidebar-collapsed="true"] .app-sidebar-expanded-label,
+  html[data-sidebar-collapsed="true"] .app-sidebar-expanded-badge {
+    display: none;
+  }
+
+  html[data-sidebar-collapsed="true"] .app-sidebar-expanded-nav-link {
+    width: 2.25rem;
+    height: 2.25rem;
+    justify-content: center;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
