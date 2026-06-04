@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Json } from "@/lib/supabase/database.types";
 import type { CreateTransferState, RpcState } from "./state";
 
 // NOTE: file ini hanya boleh meng-export async function (ketentuan
@@ -30,7 +31,7 @@ export async function createTransferAction(
   _prev: CreateTransferState,
   formData: FormData,
 ): Promise<CreateTransferState> {
-  await requireUser();
+  const me = await requireUser();
 
   // Items dikirim dalam satu hidden field JSON.
   let items: unknown = [];
@@ -73,11 +74,38 @@ export async function createTransferAction(
   }
 
   const supabase = await createSupabaseServerClient();
+  if (
+    me.profile?.role !== "super_admin" &&
+    me.profile?.outlet_id !== data.from_location_id
+  ) {
+    return {
+      ok: false,
+      message: "Anda hanya bisa membuat transfer dari outlet sendiri.",
+      fieldErrors: { from_location_id: "Outlet tidak diizinkan" },
+    };
+  }
+
+  const sourceBatchIds = data.items.map((item) => item.source_batch_id);
+  const { data: batches, error: batchError } = await supabase
+    .from("stock_batches")
+    .select("id")
+    .eq("location_id", data.from_location_id)
+    .in("id", sourceBatchIds);
+
+  if (batchError) return { ok: false, message: batchError.message };
+  if ((batches ?? []).length !== new Set(sourceBatchIds).size) {
+    return {
+      ok: false,
+      message: "Ada batch yang tidak berada di lokasi asal transfer.",
+      fieldErrors: { items: "Batch tidak valid" },
+    };
+  }
+
   const { data: newId, error } = await supabase.rpc("fn_create_transfer", {
     p_from_location_id: data.from_location_id,
     p_to_location_id: data.to_location_id,
     p_mode: data.mode,
-    p_notes: data.notes,
+    p_notes: data.notes ?? "",
     p_items: data.items,
   });
 
@@ -95,12 +123,34 @@ async function callRpc(
     | "fn_cancel_transfer"
     | "fn_reject_transfer"
     | "fn_update_transfer_items",
-  params: Record<string, unknown>,
+  params:
+    | { p_transfer_id: string }
+    | { p_transfer_id: string; p_items?: Json }
+    | { p_transfer_id: string; p_reason?: string }
+    | { p_transfer_id: string; p_items: Json },
   transferId: string,
 ): Promise<RpcState> {
   await requireUser();
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc(fn, params);
+  const { error } =
+    fn === "fn_ship_transfer"
+      ? await supabase.rpc(fn, params as { p_transfer_id: string })
+      : fn === "fn_cancel_transfer"
+        ? await supabase.rpc(fn, params as { p_transfer_id: string })
+        : fn === "fn_reject_transfer"
+          ? await supabase.rpc(
+              fn,
+              params as { p_transfer_id: string; p_reason?: string },
+            )
+          : fn === "fn_confirm_transfer"
+            ? await supabase.rpc(
+                fn,
+                params as { p_transfer_id: string; p_items?: Json },
+              )
+            : await supabase.rpc(
+                fn,
+                params as { p_transfer_id: string; p_items: Json },
+              );
   if (error) return { ok: false, message: error.message };
   revalidatePath("/transfer");
   revalidatePath(`/transfer/${transferId}`);
@@ -174,7 +224,7 @@ export async function confirmTransferAction(
 
   return callRpc(
     "fn_confirm_transfer",
-    { p_transfer_id: id, p_items: parsedItems },
+    { p_transfer_id: id, p_items: parsedItems ?? undefined },
     id,
   );
 }
@@ -195,7 +245,7 @@ export async function rejectTransferAction(
   const reason = ((formData.get("reason") as string) ?? "").trim() || null;
   return callRpc(
     "fn_reject_transfer",
-    { p_transfer_id: id, p_reason: reason },
+    { p_transfer_id: id, p_reason: reason ?? undefined },
     id,
   );
 }

@@ -11,7 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import { formatDateTime, formatNumber } from "@/lib/format";
+import {
+  formatDateTime,
+  formatJakartaDateLong,
+  formatNumber,
+  jakartaDayRangeIso,
+  shiftJakartaDate,
+  todayJakartaIso,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { voidSaleAction } from "./actions";
@@ -29,38 +36,20 @@ export type SaleHistoryRow = {
   created_by: { full_name: string } | null;
 };
 
-const TZ_OFFSET = "+07:00"; // Asia/Jakarta
-
 function todayLocalIso(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return todayJakartaIso();
 }
 
 function shiftDate(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const base = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
-  base.setDate(base.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
+  return shiftJakartaDate(iso, days);
 }
 
 function dayRangeIso(date: string): { start: string; end: string } {
-  const start = new Date(`${date}T00:00:00${TZ_OFFSET}`);
-  const next = new Date(start);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return { start: start.toISOString(), end: next.toISOString() };
+  return jakartaDayRangeIso(date);
 }
 
 function formatHumanDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatJakartaDateLong(iso);
 }
 
 const DATE_KEY = "penjualan-history:date";
@@ -81,10 +70,7 @@ function canVoid(
   if (ctx.outletId && row.location?.id !== ctx.outletId) return false;
   // Hari yang sama (Asia/Jakarta).
   const today = todayLocalIso();
-  const occurredJakarta = new Date(row.occurred_at).toLocaleDateString(
-    "en-CA",
-    { timeZone: "Asia/Jakarta" },
-  );
+  const occurredJakarta = todayJakartaIso(new Date(row.occurred_at));
   return occurredJakarta === today;
 }
 

@@ -19,6 +19,7 @@ import { FormField } from "@/components/ui/form-field";
 import { recordInitialStockAction } from "./actions";
 import type { InitialStockState } from "./actions";
 import type { MasterProduct, MasterLocation } from "@/lib/master-data";
+import { todayJakartaIso } from "@/lib/format";
 
 type LineItem = {
   uid: string;
@@ -33,12 +34,11 @@ type LineItem = {
 const initialState: InitialStockState = { ok: false };
 
 function toLocalDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return todayJakartaIso(d);
 }
 
 function localDateStartIso(date: string): string {
-  return new Date(`${date}T00:00`).toISOString();
+  return new Date(`${date}T00:00:00+07:00`).toISOString();
 }
 
 function createEmptyRow(uid: string, locationId: string): LineItem {
@@ -213,7 +213,7 @@ export function InitialStockForm({
             product?.is_perishable && i.produced_at
               ? localDateStartIso(i.produced_at)
               : product?.is_perishable
-                ? new Date().toISOString()
+                ? localDateStartIso(todayJakartaIso())
                 : null,
           expires_at:
             product?.is_perishable && i.expires_at

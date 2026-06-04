@@ -1,45 +1,15 @@
 import Link from "next/link";
-import { ArrowLeftRight, Plus } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { z } from "zod";
-import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { TransferListFilters } from "./list-filters";
-import { TransferBoxTabs, type BoxKey } from "./box-tabs";
+import { type BoxKey } from "./box-tabs";
+import { TransferBoard, type TransferListRow } from "./transfer-board";
 import { RegisterPageAction } from "@/components/register-page-action";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  transferModeLabel,
-  transferStatusLabel,
-  transferStatusVariant,
-  type TransferMode,
-  type TransferStatus,
-} from "@/lib/transfer";
+import { type TransferStatus } from "@/lib/transfer";
 
-export const metadata = { title: "Transfer — Sistem Inventaris" };
-
-type Row = {
-  id: string;
-  code: string;
-  mode: TransferMode;
-  status: TransferStatus;
-  notes: string | null;
-  created_at: string;
-  shipped_at: string | null;
-  received_at: string | null;
-  from_location: { id: string; code: string; name: string } | null;
-  to_location: { id: string; code: string; name: string } | null;
-  items: { quantity: number }[];
-};
+export const metadata = { title: "Transfer - Sistem Inventaris" };
 
 type SearchParams = Promise<{
   status?: string;
@@ -48,11 +18,10 @@ type SearchParams = Promise<{
 }>;
 
 const ACTIVE_STATUSES: TransferStatus[] = ["pending", "in_transit"];
+const BOXES = new Set<BoxKey>(["incoming", "outgoing", "history", "all"]);
 
-// Whitelist nilai untuk searchParams — apapun yang bukan UUID atau bukan
-// status valid akan diabaikan. Ini menutup PostgREST filter injection lewat
-// URL: tanpa validasi, string seperti `xx),special.lt(2025-01-01` bisa
-// dipotong masuk ke `.or(...)`.
+// Whitelist nilai untuk searchParams. Nilai selain UUID/status valid diabaikan
+// agar string URL tidak bisa dipotong masuk ke filter PostgREST `.or(...)`.
 const VALID_STATUSES = new Set<TransferStatus>([
   "pending",
   "in_transit",
@@ -76,6 +45,24 @@ function safeStatus(value: string | undefined): TransferStatus | null {
     : null;
 }
 
+function safeBox(value: string | undefined): BoxKey | null {
+  return BOXES.has(value as BoxKey) ? (value as BoxKey) : null;
+}
+
+function transferListUrl(box: BoxKey, sp: Awaited<SearchParams>): string {
+  const params = new URLSearchParams();
+  params.set("box", box);
+
+  if (box === "all") {
+    const status = safeStatus(sp.status);
+    const outlet = safeUuid(sp.outlet);
+    if (status) params.set("status", status);
+    if (outlet) params.set("outlet", outlet);
+  }
+
+  return `/transfer?${params.toString()}`;
+}
+
 export default async function TransferListPage({
   searchParams,
 }: {
@@ -85,17 +72,21 @@ export default async function TransferListPage({
   const sp = await searchParams;
   const myOutlet = me.profile?.outlet_id ?? null;
   const isAdmin = me.profile?.role === "super_admin";
+  const canHaveOutletBoxes = !!myOutlet;
 
-  // Default tab: kasir → "incoming"; admin → "all".
+  // Default tab: kasir dengan outlet -> "incoming"; admin/no outlet -> "all".
+  // Incoming/outgoing dinormalisasi saat user tidak punya outlet.
+  const requestedBox = safeBox(sp.box);
+  const defaultBox: BoxKey = !isAdmin && canHaveOutletBoxes ? "incoming" : "all";
   const box: BoxKey =
-    sp.box === "incoming" ||
-    sp.box === "outgoing" ||
-    sp.box === "history" ||
-    sp.box === "all"
-      ? sp.box
-      : isAdmin
-        ? "all"
-        : "incoming";
+    requestedBox &&
+    (canHaveOutletBoxes || requestedBox === "history" || requestedBox === "all")
+      ? requestedBox
+      : defaultBox;
+
+  if (sp.box && requestedBox !== box) {
+    redirect(transferListUrl(box, sp));
+  }
 
   const supabase = await createSupabaseServerClient();
 
@@ -135,9 +126,8 @@ export default async function TransferListPage({
     }
   }
 
-  // Filter sekunder via TransferListFilters (status & outlet) — hanya
-  // berlaku pada tab "all" agar tidak konflik dengan filter tab utama.
-  // sp.* divalidasi (UUID & enum) untuk mencegah PostgREST filter injection.
+  // Filter sekunder via TransferListFilters (status & outlet) hanya berlaku
+  // pada tab "all" agar tidak konflik dengan filter tab utama.
   if (box === "all") {
     const safeStatusFilter = safeStatus(sp.status);
     if (safeStatusFilter) {
@@ -152,7 +142,7 @@ export default async function TransferListPage({
   }
 
   const { data, error } = await query;
-  const rows = ((data ?? []) as unknown as Row[]) ?? [];
+  const rows = ((data ?? []) as unknown as TransferListRow[]) ?? [];
 
   return (
     <div className="space-y-6">
@@ -166,113 +156,16 @@ export default async function TransferListPage({
         </Link>
       </RegisterPageAction>
 
-      <TransferBoxTabs current={box} canHaveOutletBoxes={!!myOutlet} />
-
-      {box === "all" ? (
-        <TransferListFilters defaultOutletId={myOutlet} />
-      ) : null}
-
       {error ? (
         <p className="text-sm text-destructive">{error.message}</p>
       ) : null}
 
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Kode</TableHead>
-              <TableHead>Asal → Tujuan</TableHead>
-              <TableHead>Mode</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Item</TableHead>
-              <TableHead>Dibuat</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10">
-                  <EmptyState
-                    icon={ArrowLeftRight}
-                    title={
-                      box === "incoming"
-                        ? "Tidak ada transfer masuk"
-                        : box === "outgoing"
-                          ? "Tidak ada transfer keluar"
-                          : box === "history"
-                            ? "Belum ada riwayat"
-                            : "Belum ada transfer"
-                    }
-                    description={
-                      box === "incoming"
-                        ? "Tidak ada transfer pending atau dalam perjalanan ke outlet ini."
-                        : box === "outgoing"
-                          ? "Tidak ada transfer pending atau dalam perjalanan dari outlet ini."
-                          : "Buat transfer pertama dari Central Pastry ke outlet."
-                    }
-                  />
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((r) => {
-                const totalQty = r.items.reduce(
-                  (sum, i) => sum + Number(i.quantity),
-                  0,
-                );
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">
-                      {r.code}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <span className="font-medium">
-                          {r.from_location?.code ?? "—"}
-                        </span>
-                        <span className="mx-1 text-muted-foreground">→</span>
-                        <span className="font-medium">
-                          {r.to_location?.code ?? "—"}
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {r.from_location?.name} → {r.to_location?.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {transferModeLabel(r.mode)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={transferStatusVariant(r.status)}>
-                        {transferStatusLabel(r.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {r.items.length}{" "}
-                      <span className="text-xs text-muted-foreground">
-                        ({totalQty})
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatDateTime(r.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        href={`/transfer/${r.id}`}
-                        className="text-sm font-medium text-primary hover:underline"
-                      >
-                        Detail
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <TransferBoard
+        rows={rows}
+        box={box}
+        canHaveOutletBoxes={canHaveOutletBoxes}
+        defaultOutletId={myOutlet}
+      />
     </div>
   );
 }

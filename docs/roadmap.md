@@ -221,9 +221,14 @@ Fitur untuk mengisi stok awal saat pertama kali migrasi dari sistem manual ke ap
   - Function `fn_initial_stock_entry(p_location_id, p_product_id, p_quantity, p_produced_at?, p_expires_at?, p_notes?)`
   - Membuat batch baru + movement `adjustment_in` di lokasi mana pun (outlet, bukan hanya central kitchen)
   - `security invoker` + Super Admin only
+- Migration `20260604150000_initial_stock_entry_batch.sql`:
+  - Function `fn_initial_stock_entry_batch(p_items)` untuk multi-item atomic
+  - Jika satu item gagal, seluruh pengisian stok awal rollback
 - Halaman `/initial-stock` (Super Admin only):
   - Multi-item form: pilih outlet, produk, qty, tanggal produksi, tanggal expired
   - Auto-fill expires_at berdasarkan shelf life produk
   - Untuk perishable: tanggal produksi wajib, expired auto-calculate
   - Untuk non-perishable: tanggal produksi & expired tidak diperlukan
 - Sidebar: menu "Stok Awal" dengan ikon Database, hanya untuk Super Admin
+- Regression test lokal `npm run test:inventory` mencakup initial stock,
+  sale void, dan transfer partial receive.

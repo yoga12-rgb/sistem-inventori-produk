@@ -266,3 +266,14 @@ Function baru untuk mengisi stok awal saat go-live. Tidak seperti `fn_record_pro
 - Untuk produk perishable: `produced_at` wajib diisi
 - Untuk produk non-perishable: `produced_at` diisi `now()` jika null, `expires_at` selalu null
 - `security invoker` — Server Action sudah gating via `requireSuperAdmin()`
+
+### `fn_initial_stock_entry_batch(p_items)`
+
+Batch RPC untuk halaman `/initial-stock`. Menulis banyak item stok awal dalam
+satu transaksi PostgreSQL:
+
+- Input JSONB array berisi `location_id`, `product_id`, `quantity`,
+  `produced_at`, `expires_at`, dan `notes`
+- Hanya Super Admin (`is_super_admin()`) yang boleh memanggil
+- Jika satu item gagal validasi/insert, seluruh function rollback otomatis
+- Return integer jumlah item yang berhasil dicatat

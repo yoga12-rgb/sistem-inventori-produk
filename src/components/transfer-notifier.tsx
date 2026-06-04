@@ -25,6 +25,15 @@ type TransferRow = {
 };
 
 const POLL_INTERVAL_MS = 30_000;
+const INCOMING_POLL_STATUSES: readonly TransferStatus[] = [
+  "pending",
+  "in_transit",
+];
+const OUTGOING_POLL_STATUSES: readonly TransferStatus[] = [
+  "received",
+  "rejected",
+  "cancelled",
+];
 
 type Direction = "incoming" | "outgoing";
 
@@ -238,11 +247,11 @@ export function TransferNotifier({
         direction === "incoming"
           ? {
               eq: { to_location_id: myOutletId },
-              statuses: ["pending", "in_transit"],
+              statuses: INCOMING_POLL_STATUSES,
             }
           : {
               eq: { from_location_id: myOutletId },
-              statuses: ["received", "rejected", "cancelled"],
+              statuses: OUTGOING_POLL_STATUSES,
             };
 
       let q = supabase

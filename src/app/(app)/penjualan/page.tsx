@@ -5,6 +5,7 @@ import { RegisterPageAction } from "@/components/register-page-action";
 import { PosBoard } from "./pos-board";
 import type { SaleHistoryRow } from "./sale-history-panel";
 import { requireUser } from "@/lib/auth";
+import { jakartaDayRangeIso, todayJakartaIso } from "@/lib/format";
 import { getMasterData } from "@/lib/master-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -30,15 +31,7 @@ export default async function PenjualanPage() {
   // Riwayat hari ini (Asia/Jakarta) — cache awal untuk panel Riwayat supaya
   // tab pertama dibuka tetap instan; panel sendiri punya filter tanggal.
   const supabase = await createSupabaseServerClient();
-  const startOfTodayJakarta = (() => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    return new Date(`${iso}T00:00:00+07:00`).toISOString();
-  })();
-  const endOfTodayJakarta = new Date(
-    new Date(startOfTodayJakarta).getTime() + 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const todayRange = jakartaDayRangeIso(todayJakartaIso());
 
   const { data: salesData } = await supabase
     .from("sales")
@@ -51,8 +44,8 @@ export default async function PenjualanPage() {
         created_by:profiles!sales_created_by_fkey(full_name)
       `,
     )
-    .gte("occurred_at", startOfTodayJakarta)
-    .lt("occurred_at", endOfTodayJakarta)
+    .gte("occurred_at", todayRange.start)
+    .lt("occurred_at", todayRange.end)
     .order("occurred_at", { ascending: false });
   const sales = (salesData ?? []) as unknown as SaleHistoryRow[];
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ViewportTable } from "@/components/viewport-table";
 import {
   formatDate,
   formatDateTime,
@@ -56,6 +57,16 @@ type BatchRow = {
 
 const FILTER_KEY = "stock-board:filters";
 
+const columns = [
+  { key: "product", label: "Produk" },
+  { key: "category", label: "Kategori" },
+  { key: "location", label: "Lokasi" },
+  { key: "total", label: "Total stok", className: "text-right" },
+  { key: "batches", label: "Batch", className: "text-right" },
+  { key: "expiry", label: "Expired terdekat" },
+  { key: "actions", label: "Aksi", className: "text-right" },
+];
+
 type FilterState = { locationId: string | "all" };
 
 function readSavedFilter(): FilterState | null {
@@ -76,13 +87,13 @@ export function StockBoard({
 }: {
   defaultLocationId: string | null;
 }) {
-  // Master data dari layout provider — tidak fetch ulang per navigasi.
+  // Master data dari layout provider â€” tidak fetch ulang per navigasi.
   const master = useMasterData();
   const locations = master.locations;
   const categories = master.categories;
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  // Init dengan server value saja — localStorage di-sync via useEffect
+  // Init dengan server value saja â€” localStorage di-sync via useEffect
   // supaya tidak menyebabkan hydration mismatch (server vs client).
   const [locationId, setLocationId] = useState<string | "all">(
     defaultLocationId ?? "all",
@@ -140,7 +151,7 @@ export function StockBoard({
     void refresh();
   }, [refresh]);
 
-  // Realtime: any batch / movement change → re-fetch view.
+  // Realtime: any batch / movement change â†’ re-fetch view.
   useEffect(() => {
     const channel = supabase
       .channel("stock-board")
@@ -170,229 +181,221 @@ export function StockBoard({
   }, [rows, categoryFilter]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Lokasi</span>
-          <Select
-            value={locationId}
-            onChange={(e) =>
-              setLocationId(e.currentTarget.value as string | "all")
-            }
-            className="min-w-60"
-          >
-            <option value="all">Semua lokasi</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code} — {l.name} {l.type === "central_kitchen" ? "(CP)" : ""}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Button variant="outline" size="sm" onClick={() => void refresh()}>
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          Muat ulang
-        </Button>
-      </div>
+    <ViewportTable
+      rows={filteredRows}
+      columns={columns}
+      getRowKey={(r) => `${r.product_id}-${r.location_id}`}
+      empty={
+        loading ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            Memuat stok...
+          </div>
+        ) : (
+          <EmptyState
+            title="Belum ada stok"
+            description="Catat produksi atau stok masuk untuk mulai mengisi inventaris."
+          />
+        )
+      }
+      filters={
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Lokasi</span>
+              <Select
+                value={locationId}
+                onChange={(e) =>
+                  setLocationId(e.currentTarget.value as string | "all")
+                }
+                className="min-w-60"
+              >
+                <option value="all">Semua lokasi</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.code} - {l.name}{" "}
+                    {l.type === "central_kitchen" ? "(CP)" : ""}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <Button variant="outline" size="sm" onClick={() => void refresh()}>
+              <RefreshCw
+                className={cn("h-4 w-4", loading && "animate-spin")}
+              />
+              Muat ulang
+            </Button>
+            <p className="ml-auto text-xs text-muted-foreground">
+              {filteredRows.length} stok
+            </p>
+          </div>
 
-      {/* Filter kategori */}
-      {categories.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCategoryFilter("all")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              categoryFilter === "all"
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-          >
-            Semua kategori
-          </button>
-          {categories.map((c) => {
-            const active = categoryFilter === c.id;
-            const style =
-              active && c.color
-                ? {
-                    borderColor: `${c.color}80`,
-                    backgroundColor: `${c.color}1f`,
-                    color: c.color,
-                  }
-                : undefined;
-            return (
+          {categories.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                key={c.id}
                 type="button"
-                onClick={() => setCategoryFilter(c.id)}
+                onClick={() => setCategoryFilter("all")}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                  active
-                    ? c.color
-                      ? ""
-                      : "border-primary/40 bg-primary/10 text-primary"
+                  categoryFilter === "all"
+                    ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                 )}
-                style={style}
               >
-                {c.icon ? <span>{c.icon}</span> : null}
-                {c.name}
+                Semua kategori
               </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setCategoryFilter("none")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              categoryFilter === "none"
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-          >
-            Tanpa kategori
-          </button>
-        </div>
-      ) : null}
-
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produk</TableHead>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Lokasi</TableHead>
-              <TableHead className="text-right">Total stok</TableHead>
-              <TableHead className="text-right">Batch</TableHead>
-              <TableHead>Expired terdekat</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {!loading && filteredRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10">
-                  <EmptyState
-                    title="Belum ada stok"
-                    description="Catat produksi atau stok masuk untuk mulai mengisi inventaris."
-                  />
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredRows.map((r) => {
-                const product = master.productById.get(r.product_id);
-                const warningHours = product?.expiry_warning_hours ?? 24;
-                const isWarning =
-                  r.is_perishable &&
-                  r.nearest_expiry &&
-                  hoursBetween(new Date(), r.nearest_expiry) <= warningHours;
+              {categories.map((c) => {
+                const active = categoryFilter === c.id;
+                const style =
+                  active && c.color
+                    ? {
+                        borderColor: `${c.color}80`,
+                        backgroundColor: `${c.color}1f`,
+                        color: c.color,
+                      }
+                    : undefined;
                 return (
-                  <TableRow key={`${r.product_id}-${r.location_id}`}>
-                    <TableCell>
-                      <div className="font-medium">{r.product_name}</div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {r.sku}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {r.category_name ? (
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
-                          style={
-                            r.category_color
-                              ? {
-                                  borderColor: `${r.category_color}66`,
-                                  backgroundColor: `${r.category_color}1f`,
-                                  color: r.category_color,
-                                }
-                              : undefined
-                          }
-                        >
-                          {r.category_icon ? (
-                            <span>{r.category_icon}</span>
-                          ) : null}
-                          {r.category_name}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">{r.location_name}</div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {r.location_code}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatNumber(r.total_qty)}{" "}
-                      <span className="text-muted-foreground">{r.unit}</span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {r.active_batches}
-                    </TableCell>
-                    <TableCell>
-                      {r.is_perishable ? (
-                        <span className="flex items-center gap-2">
-                          {isWarning ? (
-                            <AlertTriangle
-                              aria-label="Mendekati kedaluwarsa"
-                              className="h-4 w-4 text-warning"
-                            />
-                          ) : null}
-                          <span
-                            className={cn(
-                              "text-sm",
-                              isWarning &&
-                                "font-medium text-warning-foreground",
-                            )}
-                          >
-                            {formatDateTime(r.nearest_expiry)}
-                          </span>
-                          {isWarning && product?.expiry_discount_percent ? (
-                            <Badge variant="warning">
-                              Saran diskon{" "}
-                              {Math.round(product.expiry_discount_percent)}%
-                            </Badge>
-                          ) : null}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <BatchListModal
-                          productId={r.product_id}
-                          locationId={r.location_id}
-                          productName={r.product_name}
-                          locationLabel={`${r.location_code} — ${r.location_name}`}
-                          unit={r.unit}
-                          isPerishable={r.is_perishable}
-                          warningHours={warningHours}
-                        />
-                        <DisposalDialog
-                          productId={r.product_id}
-                          locationId={r.location_id}
-                          productName={r.product_name}
-                          locationLabel={`${r.location_code} — ${r.location_name}`}
-                          unit={r.unit}
-                          isPerishable={r.is_perishable}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryFilter(c.id)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      active
+                        ? c.color
+                          ? ""
+                          : "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    )}
+                    style={style}
+                  >
+                    {c.icon ? <span>{c.icon}</span> : null}
+                    {c.name}
+                  </button>
                 );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+              })}
+              <button
+                type="button"
+                onClick={() => setCategoryFilter("none")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  categoryFilter === "none"
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+              >
+                Tanpa kategori
+              </button>
+            </div>
+          ) : null}
+
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+      }
+      renderRow={(r) => {
+        const product = master.productById.get(r.product_id);
+        const warningHours = product?.expiry_warning_hours ?? 24;
+        const isWarning =
+          r.is_perishable &&
+          r.nearest_expiry &&
+          hoursBetween(new Date(), r.nearest_expiry) <= warningHours;
+
+        return (
+          <>
+            <TableCell>
+              <div className="font-medium">{r.product_name}</div>
+              <div className="font-mono text-xs text-muted-foreground">
+                {r.sku}
+              </div>
+            </TableCell>
+            <TableCell>
+              {r.category_name ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+                  style={
+                    r.category_color
+                      ? {
+                          borderColor: `${r.category_color}66`,
+                          backgroundColor: `${r.category_color}1f`,
+                          color: r.category_color,
+                        }
+                      : undefined
+                  }
+                >
+                  {r.category_icon ? <span>{r.category_icon}</span> : null}
+                  {r.category_name}
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">-</span>
+              )}
+            </TableCell>
+            <TableCell>
+              <div className="text-sm">{r.location_name}</div>
+              <div className="font-mono text-xs text-muted-foreground">
+                {r.location_code}
+              </div>
+            </TableCell>
+            <TableCell className="text-right tabular-nums font-medium">
+              {formatNumber(r.total_qty)}{" "}
+              <span className="text-muted-foreground">{r.unit}</span>
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {r.active_batches}
+            </TableCell>
+            <TableCell>
+              {r.is_perishable ? (
+                <span className="flex items-center gap-2">
+                  {isWarning ? (
+                    <AlertTriangle
+                      aria-label="Mendekati kedaluwarsa"
+                      className="h-4 w-4 text-warning"
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      "text-sm",
+                      isWarning && "font-medium text-warning-foreground",
+                    )}
+                  >
+                    {formatDateTime(r.nearest_expiry)}
+                  </span>
+                  {isWarning && product?.expiry_discount_percent ? (
+                    <Badge variant="warning">
+                      Saran diskon{" "}
+                      {Math.round(product.expiry_discount_percent)}%
+                    </Badge>
+                  ) : null}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">-</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="inline-flex items-center gap-1">
+                <BatchListModal
+                  productId={r.product_id}
+                  locationId={r.location_id}
+                  productName={r.product_name}
+                  locationLabel={`${r.location_code} - ${r.location_name}`}
+                  unit={r.unit}
+                  isPerishable={r.is_perishable}
+                  warningHours={warningHours}
+                />
+                <DisposalDialog
+                  productId={r.product_id}
+                  locationId={r.location_id}
+                  productName={r.product_name}
+                  locationLabel={`${r.location_code} - ${r.location_name}`}
+                  unit={r.unit}
+                  isPerishable={r.is_perishable}
+                />
+              </div>
+            </TableCell>
+          </>
+        );
+      }}
+    />
   );
 }
-
 function BatchListModal({
   productId,
   locationId,
@@ -455,7 +458,7 @@ function BatchListModal({
         className="max-w-2xl"
       >
         {loading ? (
-          <p className="text-sm text-muted-foreground">Memuat…</p>
+          <p className="text-sm text-muted-foreground">Memuatâ€¦</p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : batches.length === 0 ? (
@@ -507,7 +510,7 @@ function BatchListModal({
                         {formatNumber(b.remaining_qty)} {unit}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {b.notes ?? "—"}
+                        {b.notes ?? "â€”"}
                       </TableCell>
                     </TableRow>
                   );
@@ -520,3 +523,4 @@ function BatchListModal({
     </>
   );
 }
+

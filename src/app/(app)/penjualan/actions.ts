@@ -26,7 +26,7 @@ export async function createSaleAction(
   _prev: SaleFormState,
   formData: FormData,
 ): Promise<SaleFormState> {
-  await requireUser();
+  const me = await requireUser();
 
   let items: unknown = [];
   try {
@@ -57,11 +57,22 @@ export async function createSaleAction(
   }
   const data = parsed.data;
 
+  if (
+    me.profile?.role !== "super_admin" &&
+    me.profile?.outlet_id !== data.location_id
+  ) {
+    return {
+      ok: false,
+      message: "Anda hanya bisa mencatat penjualan di outlet sendiri.",
+      fieldErrors: { location_id: "Outlet tidak diizinkan" },
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("fn_record_sale", {
     p_location_id: data.location_id,
     p_occurred_at: new Date(data.occurred_at).toISOString(),
-    p_notes: data.notes,
+    p_notes: data.notes ?? "",
     p_items: data.items,
   });
 
@@ -98,7 +109,8 @@ export async function voidSaleAction(
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("fn_void_sale", {
     p_sale_id: saleId,
-    p_reason: reason && reason.trim().length > 0 ? reason.trim() : null,
+    p_reason:
+      reason && reason.trim().length > 0 ? reason.trim() : undefined,
   });
 
   if (error) {

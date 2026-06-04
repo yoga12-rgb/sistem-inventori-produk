@@ -16,8 +16,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useMasterData } from "@/components/master-data-provider";
-import { formatDateTime } from "@/lib/format";
+import {
+  formatDateTime,
+  isValidJakartaDate,
+  jakartaDayRangeIso,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { Enums } from "@/lib/supabase/database.types";
 import { cn } from "@/lib/utils";
 
 const ESTIMATED_ROW_HEIGHT = 61;
@@ -28,7 +33,9 @@ const INTEGER_QTY_FMT = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 });
 
-const MOVEMENT_LABEL: Record<string, string> = {
+type StockMovementType = Enums<"stock_movement_type">;
+
+const MOVEMENT_LABEL: Record<StockMovementType, string> = {
   production_in: "Produksi",
   entry_in: "Stok masuk",
   transfer_in: "Transfer in",
@@ -44,9 +51,9 @@ const MOVEMENT_LABEL: Record<string, string> = {
   adjustment_out: "Adjustment out",
 };
 
-const MOVEMENT_TYPES = Object.keys(MOVEMENT_LABEL);
+const MOVEMENT_TYPES = Object.keys(MOVEMENT_LABEL) as StockMovementType[];
 
-const IN_TYPES = new Set([
+const IN_TYPES = new Set<StockMovementType>([
   "production_in",
   "entry_in",
   "transfer_in",
@@ -60,7 +67,7 @@ const stickyHeadClass =
 type Movement = {
   id: string;
   occurred_at: string;
-  movement_type: string;
+  movement_type: StockMovementType;
   quantity: number;
   reference_type: string | null;
   notes: string | null;
@@ -82,9 +89,11 @@ function formatMovementNote(m: Movement): string {
   return m.notes.replace(/\b(\d+)\.0+\b/g, "$1");
 }
 
-function safeType(value: string | null): string {
+function safeType(value: string | null): StockMovementType | "all" {
   if (!value || value === "all") return "all";
-  return MOVEMENT_TYPES.includes(value) ? value : "all";
+  return MOVEMENT_TYPES.includes(value as StockMovementType)
+    ? (value as StockMovementType)
+    : "all";
 }
 
 function safeOutlet(value: string | null, locationIds: Set<string>): string {
@@ -95,15 +104,7 @@ function safeOutlet(value: string | null, locationIds: Set<string>): string {
 function safeDate(value: string | null): string {
   if (!value) return "all";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "all";
-  const date = new Date(`${value}T00:00:00+07:00`);
-  return Number.isFinite(date.getTime()) ? value : "all";
-}
-
-function dayRangeIso(date: string): { start: string; end: string } {
-  const start = new Date(`${date}T00:00:00+07:00`);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start: start.toISOString(), end: end.toISOString() };
+  return isValidJakartaDate(value) ? value : "all";
 }
 
 export function AktivitasBoard() {
@@ -162,7 +163,7 @@ export function AktivitasBoard() {
       if (type !== "all") query = query.eq("movement_type", type);
       if (outlet !== "all") query = query.eq("location_id", outlet);
       if (date !== "all") {
-        const range = dayRangeIso(date);
+        const range = jakartaDayRangeIso(date);
         query = query.gte("occurred_at", range.start).lt("occurred_at", range.end);
       }
 

@@ -172,7 +172,7 @@ export async function recordStockEntryAction(
     p_location_id: data.location_id,
     p_quantity: data.quantity,
     p_entered_at: toIso(data.entered_at),
-    p_notes: data.notes,
+    p_notes: data.notes ?? undefined,
   });
 
   if (error) return { ok: false, message: error.message };
@@ -216,7 +216,7 @@ export async function editProductionQtyAction(
   const { error } = await supabase.rpc("fn_update_production_qty", {
     p_batch_id: data.batch_id,
     p_new_qty: data.new_qty,
-    p_reason: data.reason,
+    p_reason: data.reason ?? undefined,
   });
 
   if (error) return { ok: false, message: error.message };
@@ -242,7 +242,7 @@ export async function voidProductionAction(
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("fn_void_production", {
     p_batch_id: batch_id,
-    p_reason: reason,
+    p_reason: reason ?? undefined,
   });
 
   if (error) return { ok: false, message: error.message };

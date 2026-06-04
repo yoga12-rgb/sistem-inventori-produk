@@ -5,7 +5,12 @@ import { Copy, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
-import { formatNumber } from "@/lib/format";
+import {
+  formatJakartaDateLong,
+  formatNumber,
+  jakartaDayRangeIso,
+  todayJakartaIso,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
@@ -84,12 +89,6 @@ const DISPOSAL_EMOJI: Record<DisposalCategory, string> = {
 const DATE_FILTER_KEY = "eod-panel:date";
 const TRANSFER_TOGGLE_KEY = "eod-panel:include-transfer";
 
-function todayLocalIso(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function formatBatchDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return iso;
@@ -98,13 +97,7 @@ function formatBatchDate(iso: string): string {
 }
 
 function formatDateLong(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatJakartaDateLong(iso).replace(/^\S+,\s*/, "");
 }
 
 /**
@@ -269,8 +262,8 @@ export function EodPanel({
 
   const [outletId, setOutletId] = useState<string>(defaultOutletId);
   const [date, setDate] = useState<string>(() => {
-    if (typeof window === "undefined") return todayLocalIso();
-    return window.localStorage.getItem(DATE_FILTER_KEY) ?? todayLocalIso();
+    if (typeof window === "undefined") return todayJakartaIso();
+    return window.localStorage.getItem(DATE_FILTER_KEY) ?? todayJakartaIso();
   });
   const [includeTransfer, setIncludeTransfer] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -323,45 +316,55 @@ export function EodPanel({
 
       // 2. Fetch transfer history — outlet ini sbg pengirim/penerima tgl tsb
       // Catatan: Supabase FK join mengembalikan array (meski FK tunggal)
+      const transferRange = jakartaDayRangeIso(date);
       const { data: transferData } = await supabase
         .from("transfers")
         .select(
           `
           code,
           status,
-          from_location:from_location_id ( name ),
-          to_location:to_location_id ( name ),
+          from_location:locations!transfers_from_location_id_fkey ( name ),
+          to_location:locations!transfers_to_location_id_fkey ( name ),
           transfer_items (
             quantity,
-            product:product_id ( name, unit )
+            product:products!transfer_items_product_id_fkey ( name, unit )
           )
         `,
         )
         .or(`from_location_id.eq.${outletId},to_location_id.eq.${outletId}`)
         .eq("status", "received")
-        .gte("created_at", `${date} 00:00:00+07`)
-        .lte("created_at", `${date} 23:59:59+07`)
+        .gte("created_at", transferRange.start)
+        .lt("created_at", transferRange.end)
         .order("created_at", { ascending: true });
 
       const lines: TransferLine[] = [];
       if (transferData) {
-        const raw = transferData as Array<{
+        const raw = transferData as unknown as Array<{
           code: string;
           status: string;
-          // Supabase FK join returns array even for singular FK
-          from_location: Array<{ name: string }>;
-          to_location: Array<{ name: string }>;
+          from_location: { name: string } | Array<{ name: string }> | null;
+          to_location: { name: string } | Array<{ name: string }> | null;
           transfer_items: Array<{
             quantity: number;
-            // FK join inside transfer_items also returns array
-            product: Array<{ name: string; unit: string }>;
+            product:
+              | { name: string; unit: string }
+              | Array<{ name: string; unit: string }>
+              | null;
           }>;
         }>;
         for (const t of raw) {
-          const fromName = t.from_location?.[0]?.name ?? "";
-          const toName = t.to_location?.[0]?.name ?? "";
+          const fromLocation = Array.isArray(t.from_location)
+            ? t.from_location[0]
+            : t.from_location;
+          const toLocation = Array.isArray(t.to_location)
+            ? t.to_location[0]
+            : t.to_location;
+          const fromName = fromLocation?.name ?? "";
+          const toName = toLocation?.name ?? "";
           for (const item of t.transfer_items) {
-            const prod = item.product?.[0];
+            const prod = Array.isArray(item.product)
+              ? item.product[0]
+              : item.product;
             lines.push({
               code: t.code,
               product_name: prod?.name ?? "—",

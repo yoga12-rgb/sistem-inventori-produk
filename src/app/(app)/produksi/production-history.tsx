@@ -28,7 +28,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDateTime, formatNumber } from "@/lib/format";
+import {
+  formatDateTime,
+  formatJakartaDateLong,
+  formatNumber,
+  jakartaDayRangeIso,
+  shiftJakartaDate,
+  todayJakartaIso,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -64,7 +71,6 @@ type Row = {
 };
 
 const FILTER_KEY = "production-history:filters";
-const TZ = "Asia/Jakarta";
 const ESTIMATED_ROW_HEIGHT = 73;
 const MIN_PAGE_SIZE = 8;
 const OVERSCAN_ROWS = 4;
@@ -87,38 +93,22 @@ function readSavedFilter(): FilterState | null {
 }
 
 function todayLocalIso(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return todayJakartaIso();
 }
 
 function shiftDate(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const base = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
-  base.setDate(base.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
+  return shiftJakartaDate(iso, days);
 }
 
 function formatHumanDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatJakartaDateLong(iso);
 }
 
 /**
  * Hitung rentang [start, end) UTC untuk suatu tanggal lokal Asia/Jakarta.
  */
 function dayRangeIso(date: string): { start: string; end: string } {
-  const start = new Date(`${date}T00:00:00+07:00`);
-  const next = new Date(start);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return { start: start.toISOString(), end: next.toISOString() };
+  return jakartaDayRangeIso(date);
 }
 
 // ---------- Edit Modal ------------------------------------------------
@@ -662,7 +652,7 @@ export function ProductionHistory({
         </Button>
 
         <p className="ml-auto text-xs text-muted-foreground">
-          {rows.length} batch dimuat - {formatHumanDate(date)} - TZ {TZ}
+          {rows.length} batch dimuat - {formatHumanDate(date)}
         </p>
       </div>
 

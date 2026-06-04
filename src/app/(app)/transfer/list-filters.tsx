@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Select } from "@/components/ui/select";
 import { useMasterData } from "@/components/master-data-provider";
 import { transferStatusLabel, type TransferStatus } from "@/lib/transfer";
@@ -39,6 +39,7 @@ export function TransferListFilters({
   defaultOutletId: string | null;
 }) {
   const { locations } = useMasterData();
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const status = searchParams.get("status") ?? "all";
@@ -48,15 +49,17 @@ export function TransferListFilters({
   useEffect(() => {
     if (searchParams.has("status") || searchParams.has("outlet")) return;
     const saved = readSaved();
-    const next = new URLSearchParams();
+    const next = new URLSearchParams(searchParams.toString());
     if (saved) {
       if (saved.status !== "all") next.set("status", saved.status);
+      else next.delete("status");
       if (saved.outlet !== "all") next.set("outlet", saved.outlet);
+      else next.delete("outlet");
     } else if (defaultOutletId) {
       next.set("outlet", defaultOutletId);
     }
     const qs = next.toString();
-    router.replace(qs ? `?${qs}` : "?");
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -74,7 +77,7 @@ export function TransferListFilters({
     }
 
     const qs = next.toString();
-    router.replace(qs ? `?${qs}` : "?");
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
   };
 
   return (

@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env";
+import type { Database } from "@/lib/supabase/database.types";
 
 /**
  * Browser-side Supabase client — SINGLETON.
@@ -13,11 +14,12 @@ import { publicEnv } from "@/lib/env";
  * dan bersihkan di `useEffect` return — client-nya tetap yang sama.
  */
 
-let _browserClient: ReturnType<typeof createBrowserClient> | null = null;
+let _browserClient: ReturnType<typeof createBrowserClient<Database>> | null =
+  null;
 
 export function createSupabaseBrowserClient() {
   if (!_browserClient) {
-    _browserClient = createBrowserClient(
+    _browserClient = createBrowserClient<Database>(
       publicEnv.supabaseUrl,
       publicEnv.supabaseAnonKey,
     );

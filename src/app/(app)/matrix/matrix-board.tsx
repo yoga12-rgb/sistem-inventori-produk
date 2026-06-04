@@ -13,7 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatNumber } from "@/lib/format";
+import {
+  formatJakartaDateLong,
+  formatNumber,
+  shiftJakartaDate,
+  todayJakartaIso,
+} from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMasterData } from "@/components/master-data-provider";
 import { cn } from "@/lib/utils";
@@ -72,29 +77,12 @@ function readSavedFilter(): FilterState | null {
   return null;
 }
 
-function todayLocalIso(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function shiftDate(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const base = new Date(y, (m ?? 1) - 1, d ?? 1);
-  base.setDate(base.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
+  return shiftJakartaDate(iso, days);
 }
 
 function formatHumanDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatJakartaDateLong(iso);
 }
 
 /**
@@ -123,7 +111,7 @@ export function MatrixBoard({
   const { locations, productById, categoryById } = useMasterData();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
-  const [date, setDate] = useState<string>(todayLocalIso());
+  const [date, setDate] = useState<string>(todayJakartaIso());
   const [locationId, setLocationId] = useState<string | "all">(
     defaultLocationId ?? "all",
   );
@@ -198,7 +186,7 @@ export function MatrixBoard({
       return await supabase
         .rpc("fn_inventory_matrix", {
           p_date: date,
-          p_location_id: locationId === "all" ? null : locationId,
+          p_location_id: locationId === "all" ? undefined : locationId,
         });
     },
     [date, locationId, supabase],
@@ -346,7 +334,7 @@ export function MatrixBoard({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setDate(todayLocalIso())}
+            onClick={() => setDate(todayJakartaIso())}
           >
             Hari ini
           </Button>

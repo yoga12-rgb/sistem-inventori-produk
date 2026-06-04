@@ -116,47 +116,36 @@ export async function recordInitialStockAction(
   }
 
   // Semua item valid — tulis sekaligus.
-  const writeErrors: { index: number; message: string }[] = [];
-  let successCount = 0;
+  const itemsForRpc = data.items.map((item) => ({
+    location_id: item.location_id,
+    product_id: item.product_id,
+    quantity: item.quantity,
+    produced_at: item.produced_at
+      ? new Date(item.produced_at).toISOString()
+      : null,
+    expires_at: item.expires_at ? new Date(item.expires_at).toISOString() : null,
+    notes: item.notes,
+  }));
 
-  for (let i = 0; i < data.items.length; i++) {
-    const item = data.items[i];
-
-    const { error } = await supabase.rpc("fn_initial_stock_entry", {
-      p_location_id: item.location_id,
-      p_product_id: item.product_id,
-      p_quantity: item.quantity,
-      p_produced_at: item.produced_at
-        ? new Date(item.produced_at).toISOString()
-        : null,
-      p_expires_at: item.expires_at
-        ? new Date(item.expires_at).toISOString()
-        : null,
-      p_notes: item.notes,
-    });
-
-    if (error) {
-      writeErrors.push({ index: i, message: error.message });
-    } else {
-      successCount++;
-    }
-  }
+  const { data: successCount, error: writeError } = await supabase.rpc(
+    "fn_initial_stock_entry_batch",
+    { p_items: itemsForRpc },
+  );
 
   revalidatePath("/stok");
   revalidatePath("/initial-stock");
 
-  if (writeErrors.length > 0) {
+  if (writeError) {
     return {
       ok: false,
-      message: `${successCount} item berhasil dicatat, ${writeErrors.length} gagal.`,
-      successCount,
-      itemErrors: writeErrors,
+      message: `Gagal mencatat stok awal. Tidak ada data yang disimpan. ${writeError.message}`,
+      successCount: 0,
     };
   }
 
   return {
     ok: true,
-    message: `${successCount} item stok awal berhasil dicatat.`,
-    successCount,
+    message: `${successCount ?? data.items.length} item stok awal berhasil dicatat.`,
+    successCount: successCount ?? data.items.length,
   };
 }

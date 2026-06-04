@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { getServiceRoleKey, publicEnv } from "@/lib/env";
+import type { Database } from "@/lib/supabase/database.types";
 
 /**
  * Service-role Supabase client.
@@ -14,7 +15,7 @@ import { getServiceRoleKey, publicEnv } from "@/lib/env";
  *   - Touch tables across all outlets without scoping to current_user.
  */
 export function createSupabaseAdminClient() {
-  return createClient(publicEnv.supabaseUrl, getServiceRoleKey(), {
+  return createClient<Database>(publicEnv.supabaseUrl, getServiceRoleKey(), {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
